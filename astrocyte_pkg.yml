@@ -1,0 +1,151 @@
+#
+# metadata for the example astrocyte ChipSeq workflow package
+#
+
+# -----------------------------------------------------------------------------
+# BASIC INFORMATION
+# -----------------------------------------------------------------------------
+
+# A unique identifier for the workflow package, text/underscores only
+name: 'rnaseq_bicf'
+# Who wrote this?
+author: 'Brandi Cantarel'
+# A contact email address for questions
+email: 'biohpc-help@utsouthwestern.edu'
+# A more informative title for the workflow package
+title: 'BICF RNASeq Analysis Workflow'
+# A summary of the workflow package in plain text
+description: |
+  This is a workflow package for the BioHPC/BICF RNASeq workflow system.
+  It implements a simple RNASeq analysis workflow using TrimGalore, HiSAT,FeatureCounts,
+  StringTie and statistical analysis using EdgeR and Ballgown, plus a simple R Shiny
+  visualization application.
+
+# -----------------------------------------------------------------------------
+# DOCUMENTATION
+# -----------------------------------------------------------------------------
+
+# A list of documentation file in .md format that should be viewable from the
+# web interface. These files are in the 'docs' subdirectory. The first file
+# listed will be used as a documentation index and is index.md by convention
+documentation_files:
+  - 'index.md'
+
+# -----------------------------------------------------------------------------
+# NEXTFLOW WORKFLOW CONFIGURATION
+# -----------------------------------------------------------------------------
+
+# Remember - The workflow file is always named 'workflow/main.f'
+#            The workflow must publish all final output into $baseDir
+
+# A list of clueter environment modules that this workflow requires to run.
+# Specify versioned module names to ensure reproducability.
+workflow_modules:
+  - 'trimgalore/0.4.1'
+  - 'cutadapt/1.9.1'
+  - 'hisat2/2.0.1-beta-intel'
+  - 'samtools/intel/1.2'
+  - 'picard/1.127'
+  - 'subread/1.5.0-intel'
+  - 'stringtie/1.1.2-intel'
+
+# A list of parameters used by the workflow, defining how to present them,
+# options etc in the web interface. For each parameter:
+#
+# REQUIRED INFORMATION
+#  id:         The name of the parameter in the NEXTFLOW workflow
+#  type:       The type of the parameter, one of:
+#                string    - A free-format string
+#                integer   - An integer
+#                real      - A real number
+#                file      - A single file from user data
+#                files     - One or more files from user data
+#                select    - A selection from a list of values
+#  required:    true/false, must the parameter be entered/chosen?
+#  description: A user friendly description of the meaning of the parameter
+#
+# OPTIONAL INFORMATION
+#  default:   A default value for the parameter (optional)
+#  min:       Minium value/characters/files for number/string/files types
+#  max:       Maxumum value/characters/files for number/string/files types
+#  regex:     A regular expression that describes valid entries / filenames
+#
+# SELECT TYPE
+#  choices:   A set of choices presented to the user for the parameter.
+#             Each choice is a pair of value and description, e.g.
+#
+#             choices:
+#               - [ 'myval', 'The first option']
+#               - [ 'myval', 'The second option']
+#
+# NOTE - All parameters are passed to NEXTFLOW as strings... but they
+#        are validated by astrocyte using the information provided above
+
+workflow_parameters:
+
+  - id: fastqs
+    type: files
+    required: true
+    description: |
+      One or more input paired-end FASTQ files from a RNASeq experiment and a design file with the link between the same name and the sample group
+    regex: ".*(fastq|fq).gz"
+    min: 1
+
+  - id: design
+    type: file
+    required: true
+    description: |
+      A design file listing pairs of sample name and sample group
+
+  - id: genome
+    type: select
+    choices:
+      - [ '/project/apps_database/hisat2_index/GRCh38', 'Human GRCh38']
+      - [ '/project/apps_database/hisat2_index/GRCh37', 'Human GRCh37']
+      - [ '/project/apps_database/hisat2_index/GRCm38', 'Mouse GRCh38']
+    required: true
+    description: |
+      Reference genome for alignment
+
+  - id: gtf
+    type: select
+    choices:
+      - [ '/project/apps_database/iGenomes/Homo_sapiens/NCBI/GRCh38/Annotation/Genes.gencode/genes.gtf', 'GENCODE Human GRCh38' ]
+      - [ '/project/apps_database/iGenomes/Homo_sapiens/NCBI/GRCh38/Annotation/Genes/genes.gtf', 'NCBI Human GRCh38' ]
+      - [ '/project/apps_database/iGenomes/Homo_sapiens/Ensembl/GRCh37/Annotation/Genes/genes.gtf', 'Ensembl Human GRCh37' ]
+      - [ '/project/apps_database/iGenomes/Mus_musculus/NCBI/GRCh38/Annotation/Genes/gencode/genes.gtf', 'NCBI Mouse GRCh38' ]
+    required: true
+    description: |
+      The gene annotation file to use
+
+
+# -----------------------------------------------------------------------------
+# SHINY APP CONFIGURATION
+# -----------------------------------------------------------------------------
+
+# Remember - The vizapp is always 'vizapp/server.R' 'vizapp/ui.R'
+#            The workflow must publish all final output into $baseDir
+
+# Name of the R module that the vizapp will run against
+vizapp_r_module: 'R/3.2.1-Intel'
+
+# List of any CRAN packages, not provided by the modules, that must be made
+# available to the vizapp
+vizapp_cran_packages:
+  - sqldf
+  - shiny
+  - Vennerable
+  - DT
+  - ggplot2
+  - gplots
+  - gtools
+  - RColorBrewer
+
+
+# # List of any Bioconductor packages, not provided by the modules, that must be made
+# available to the vizapp
+vizapp_bioc_packages:
+  - qusage
+  - ballgown
+  - edgeR
+  - DESeq2

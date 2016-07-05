@@ -1,0 +1,14 @@
+14fd1613-1955-442b-8a54-9dcd9a60c69b	nextflow run main.nf -with-trace -with-timeline -resume
+14fd1613-1955-442b-8a54-9dcd9a60c69b	nextflow run main.nf -with-trace -with-timeline -resume
+14fd1613-1955-442b-8a54-9dcd9a60c69b	nextflow run main.nf -with-trace -with-timeline -resume
+14fd1613-1955-442b-8a54-9dcd9a60c69b	nextflow run main.nf -with-trace -with-timeline -resume
+1d575a39-ec1f-4bdd-9dba-7da595770d60	nextflow run main.nf -with-trace -with-timeline --resume 1
+d1fb6c22-093e-4c2c-bc90-50617f5f63b0	nextflow run main.nf -with-trace -with-timeline --resume 1
+8830b621-74f4-452b-90af-43a9c76c8f19	nextflow run main.nf -with-trace -with-timeline
+280fca2e-c575-452c-9799-40556e21ca37	nextflow run main.nf -with-trace -with-timeline
+b548a43d-328e-478f-b863-1ace79ecf9fa	nextflow run main.nf -with-trace -with-timeline
+126fdcac-5f12-4703-9411-735aebfa7532	nextflow run main.nf -with-trace -with-timeline --resume 1
+919e7d0f-74be-4a36-a67b-2190a5e74075	nextflow run main.nf -with-trace -with-timeline --resume 1
+4ab680e9-6214-4209-8b7f-7ae0c8427bd9	nextflow run main.nf -with-trace -with-timeline
+a9c28acd-7509-41cc-8a45-a51620ec0bb5	nextflow run main.nf -with-trace -with-timeline
+9a3ae573-dc8f-47e9-ab6a-4f370619fd05	nextflow run main.nf -with-trace -with-timeline
