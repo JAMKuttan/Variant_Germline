@@ -3,8 +3,8 @@
 
 open OUT, ">sequence.stats.txt" or die $!;
 print OUT join("\t",'Sample','total','pairs','maprate','propair','percdups',
-	       'medinsert','avginsert','stdinsert','perc10x','perc50x',
-	       'perc100x','perc500x','perc1000x'),"\n";
+	       'medinsert','avginsert','stdinsert','perc20x','perc50x',
+	       'perc100x','perc200x','perc500x'),"\n";
 my @statfiles = @ARGV;
 
 foreach $sfile (@statfiles) {
@@ -25,7 +25,7 @@ foreach $sfile (@statfiles) {
 	    $hash{propair} = 100*sprintf("%.4f",$1/$hash{total});
 	}
     }
-    open DUP, "<$prefix\.dups" or die $!;
+    open DUP, "<$prefix\.libcomplex.txt" or die $!;
     while (my $line = <DUP>) {
 	chomp($line);
 	if ($line =~ m/## METRICS/) {
@@ -64,23 +64,23 @@ foreach $sfile (@statfiles) {
     my %cov;
     open COV, "<$prefix\.genomecov.txt" or die $!;
     while (my $line = <COV>) {
-	chomp($line);
-	my ($all,$depth,$bp,$total,$percent) = split(/\t/,$line);
-	$cov{$depth} = $percent;
+      chomp($line);
+      my ($all,$depth,$bp,$total,$percent) = split(/\t/,$line);
+      $cov{$depth} = $percent;
     }
     my @depths = sort {$a <=> $b} keys %cov;
     my @perc = @cov{@depths};
     my @cum_sum = cumsum(@perc);
-    $hash{'perc10x'} = 100*sprintf("%.4f",1-$cum_sum[10]);
+    $hash{'perc20x'} = 100*sprintf("%.4f",1-$cum_sum[20]);
     $hash{'perc50x'} = 100*sprintf("%.4f",1-$cum_sum[50]);
     $hash{'perc100x'} = 100*sprintf("%.4f",1-$cum_sum[100]);
+    $hash{'perc200x'} = 100*sprintf("%.4f",1-$cum_sum[200]);
     $hash{'perc500x'} = 100*sprintf("%.4f",1-$cum_sum[500]);
-    $hash{'perc1000x'} = 100*sprintf("%.4f",1-$cum_sum[1000]);
-    
-    print OUT join("\t",$prefix, $hash{total},$hash{pairs},$hash{maprate},$hash{propair},$hash{percdups},
-		   $hash{medinsert},$hash{avginsert},$hash{stdinsert},$hash{'perc10x'},$hash{'perc50x'},
-		   $hash{'perc100x'},$hash{'perc500x'},$hash{'perc1000x'}),"\n";
-}
+    print OUT join("\t",$prefix, $hash{total},$hash{pairs},$hash{maprate},
+		   $hash{propair},$hash{percdups},$hash{medinsert},
+		   $hash{avginsert},$hash{stdinsert},$hash{'perc20x'},$hash{'perc50x'},
+		   $hash{'perc100x'},$hash{'perc200x'},$hash{'perc500x'}),"\n";
+  }
 
 sub cumsum {
   my @nums = @_;

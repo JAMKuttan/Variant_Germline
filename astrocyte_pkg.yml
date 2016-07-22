@@ -43,12 +43,15 @@ documentation_files:
 workflow_modules:
   - 'trimgalore/0.4.1'
   - 'cutadapt/1.9.1'
-  - 'hisat2/2.0.1-beta-intel'
-  - 'samtools/intel/1.2'
+  - 'speedseq/20160506'
+  - 'samtools/intel/1.3'
   - 'picard/1.127'
-  - 'subread/1.5.0-intel'
-  - 'stringtie/1.1.2-intel'
-
+  - 'bwa/intel/0.7.12'
+  - 'bedtools/2.25.0'
+  - 'fastqc/0.11.2'
+  - 'gatk/3.3-0'
+  - 'vcftools/0.1.1'
+  - 'snpeff/4.2'
 # A list of parameters used by the workflow, defining how to present them,
 # options etc in the web interface. For each parameter:
 #
@@ -88,36 +91,57 @@ workflow_parameters:
     required: true
     description: |
       One or more input paired-end FASTQ files from a RNASeq experiment and a design file with the link between the same name and the sample group
-    regex: ".*(fastq|fq).gz"
-    min: 1
+      regex: ".*(fastq|fq).gz"
+      min: 1
+ 
+ - id: pairs
+   type: select
+   required: true
+   choices:
+     - [ 'pe', 'Paired End']
+     - [ 'se', 'Single End']
+   description: |
+     In single-end sequencing, the sequencer reads a fragment from only one end to the other, generating the sequence of base pairs. In paired-end reading it starts at one read, finishes this direction at the specified read length, and then starts another round of reading from the opposite end of the fragment.
 
+ - id: alignment
+   type: select
+   required: true
+   choices:
+     - [ 1, 'Aligned Fastq']
+     - [ 0, 'Input is GATK Recalibrated/Realigned BAM']
+   description: |
+     In single-end sequencing, the sequencer reads a fragment from only one end to the other, generating the sequence of base pairs. In paired-end reading it starts at one read, finishes this direction at the specified read length, and then starts another round of reading from the opposite end of the fragment.
+
+  - id: markdups
+    type: select
+    required: true
+    choices:
+      - [ 'mark', 'Remove Duplicates']
+      - [ 'keep', 'Keep All Sequences']
+    description: |
+      Duplicate reads are defined as originating from the same original fragment of DNA. Duplicates are identified as read pairs having identical 5-prime positions (coordinate and strand) for both reads in a mate pair and optionally, matching unique molecular identifier reads.
+      
   - id: design
     type: file
     required: true
     description: |
       A design file listing pairs of sample name and sample group
 
+  - id: capturebed
+    type: file
+    required: true
+    description: |
+      A capture bed file is a bed file of the targeting panel or exome capture used for the sequencing, this file is used to assess capture efficiency and to limit variants to capture region
+
   - id: genome
     type: select
     choices:
-      - [ '/project/apps_database/hisat2_index/GRCh38', 'Human GRCh38']
-      - [ '/project/apps_database/hisat2_index/GRCh37', 'Human GRCh37']
-      - [ '/project/apps_database/hisat2_index/GRCm38', 'Mouse GRCh38']
+      - [ '/project/apps_database/iGenomes/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/', 'Human GRCh38']
+      - [ '/project/apps_database/iGenomes/Homo_sapiens/NCBI/build37.2/Sequence/BWAIndex/', 'Human GRCh37']
+      - [ '/project/apps_database/iGenomes/Mus_musculus/NCBI/GRCm38/Sequence/BWAIndex/', 'Mouse GRCh38']
     required: true
     description: |
       Reference genome for alignment
-
-  - id: gtf
-    type: select
-    choices:
-      - [ '/project/apps_database/iGenomes/Homo_sapiens/NCBI/GRCh38/Annotation/Genes.gencode/genes.gtf', 'GENCODE Human GRCh38' ]
-      - [ '/project/apps_database/iGenomes/Homo_sapiens/NCBI/GRCh38/Annotation/Genes/genes.gtf', 'NCBI Human GRCh38' ]
-      - [ '/project/apps_database/iGenomes/Homo_sapiens/Ensembl/GRCh37/Annotation/Genes/genes.gtf', 'Ensembl Human GRCh37' ]
-      - [ '/project/apps_database/iGenomes/Mus_musculus/NCBI/GRCh38/Annotation/Genes/gencode/genes.gtf', 'NCBI Mouse GRCh38' ]
-    required: true
-    description: |
-      The gene annotation file to use
-
 
 # -----------------------------------------------------------------------------
 # SHINY APP CONFIGURATION

@@ -1,26 +1,29 @@
 #!/usr/bin/env nextflow
 
 // Default parameter values to run tests
-params.genome="/project/apps_database/iGenomes/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/"
-params.capture="/project/BICF/BICF_Core/shared/refdata/GRCh38/gencode.genes.v24.chr.bed"
-params.dbsnp="/project/apps_database/dbSNP/organisms/human_9606/VCF/GATK/All_20160407.vcf.gz"
-params.indel="/project/BICF/BICF_Core/shared/refdata/Mills_G1K_indels.b38.vcf.gz"
+params.genome="/project/shared/bicf_workflow_ref/GRCh38"
+capture="$params.genome/gencode.genes.v24.chr.bed"
+dbsnp="$params.genome/dbSnp.vcf.gz"
+indel="$params.genome/Mills_G1K_indels.b38.vcf.gz"
+params.gatkref="/project/apps_database/iGenomes/Homo_sapiens/NCBI/GRCh38/Sequence/WholeGenomeFasta/genome.fa"
 params.alignment=1
 params.fastqs="$baseDir/../test_data/*.fastq.gz"
 params.pairs="pe"
 params.design="$baseDir/../test_data/design.txt"
 design_file = file(params.design)
 
-fastqs=file(params.fastqs)
-targetbed=file(params.capture)
-dbsnp=file(params.dbsnp)
-knownindel=file(params.indel)
+bedgenome = "$params.genome/genomefile.txt"
+btoolsgenome = file(bedgenome)
 
+fastqs=file(params.fastqs)
+knownindel=file(indel)
+gatkref=file(params.gatkref)
 // params genome is the directory
 // base name for the index is always genome
 index_path = file(params.genome)
 index_name = "genome"
-
+capture_bed = file(capture)
+dbsnp=file(dbsnp)
 
 // Pair handling, helper function taken from rnatoy
 // which is covered by the GNU General Public License v3
@@ -77,7 +80,7 @@ process trimpe {
   input:
   set pair_id, file(read1), file(read2) from read_pe
   output:
-  set pair_id, file("${read1.baseName.split("\\.", 2)[0]}_val_1.fq.gz"), file("${read2.baseName.split("\\.", 2)[0]}_val_2.fq.gz") into trimpe
+  set pair_id, file("${read1.baseName.split("\\.fastq")[0]}_val_1.fq.gz"), file("${read2.baseName.split("\\.fastq")[0]}_val_2.fq.gz") into trimpe
   script:
   """
   module load trimgalore/0.4.1 cutadapt/1.9.1
@@ -88,7 +91,7 @@ process trimse {
   input:
   set pair_id, file(read1) from read_se
   output:
-  set pair_id, file("${read1.baseName.split("\\.", 2)[0]}_trimmed.fq.gz") into trimse
+  set pair_id, file("${read1.baseName.split("\\.fastq.gz")[0]}_trimmed.fq.gz") into trimse
   script:
   """
   module load trimgalore/0.4.1 cutadapt/1.9.1
@@ -104,22 +107,23 @@ process trimse {
 process alignpe {
 
   //publishDir $outDir, mode: 'copy'
-  cpus 4
+  cpus 32
 
   input:
   set pair_id, file(fq1), file(fq2) from trimpe
   output:
-  set pair_id, file("${pair_id}.bam") into alignpe
+  set pair_id, file("${pair_id}.bam"), file("${pair_id}.bam.bai") into alignpe
   set file("${pair_id}.bam") into ssbampe
   set file("${pair_id}.discordants.bam") into disbam
   set file("${pair_id}.splitters.bam") into splitbam
-  
+
+  file("${pair_id}.hist.txt") into insertsize
   when:
   params.pairs == 'pe'
   params.alignment == 1
   script:
   """
-  module load speedseq/20160506
+  module load speedseq/20160506 picard/1.127
   speedseq align -R '@RG\tLB:tx\tPL:illumina\tID:${pair_id}\tPU:barcode\tSM:${pair_id}' -o ${pair_id} -t 32 ${index_path}/${index_name}.fa ${fq1} ${fq2}
   java -Xmx4g -jar \$PICARD/picard.jar CollectInsertSizeMetrics INPUT=${pair_id}.bam HISTOGRAM_FILE=${pair_id}.hist.ps REFERENCE_SEQUENCE=${index_path}/${index_name}.fa OUTPUT=${pair_id}.hist.txt
   """
@@ -127,13 +131,14 @@ process alignpe {
 process alignse {
 
   //publishDir $outDir, mode: 'copy'
-  cpus 4
+  cpus 32
 
   input:
   set pair_id, file(fq1) from trimse
   output:
-  set pair_id, file("${pair_id}.bam") into alignse
+  set pair_id, file("${pair_id}.bam"),file("${pair_id}.bam.bai") into alignse
   set file("${pair_id}.bam") into ssbamse
+
   when:
   params.pairs == 'se'
   params.alignment == 1
@@ -144,6 +149,7 @@ process alignse {
   samtools view -b -u -S -o output.unsort.bam output.sam
   samtools sort -o output.dups.bam output.unsort.bam
   java -Xmx4g -jar \$PICARD/picard.jar MarkDuplicates INPUT=output.dups.bam REMOVE_DUPLICATES=true VALIDATION_STRINGENCY=LENIENT ASSUME_SORTED=true METRICS_FILE=${pair_id}.dups OUTPUT=${pair_id}.bam
+  samtools index ${pair_id}.bam
   """
 }
 
@@ -163,15 +169,13 @@ Channel
 //
 process seqqc {
 
-  memory '4GB'
   publishDir "$baseDir/output", mode: 'copy'
 
   input:
-  set pair_id, file(sbam) from aligned2
+  set pair_id, file(sbam),file(idx) from aligned2
   output:
   file("${pair_id}.flagstat.txt") into alignstats
   file("${pair_id}.libcomplex.txt") into libcomplex
-  file("${pair_id}.hist.txt") into insertsize
   file("${pair_id}.genomecov.txt") into genomecov
   script:
   """
@@ -179,7 +183,7 @@ process seqqc {
   fastqc -f bam ${sbam}
   samtools flagstat ${sbam} > ${pair_id}.flagstat.txt
   java -Xmx4g -jar \$PICARD/picard.jar EstimateLibraryComplexity INPUT=${sbam} OUTPUT=${pair_id}.libcomplex.txt
-  bedtools coverage -sorted -hist -g ${index_path}/${index_name}.genomefile.txt -b ${sbam} -a ${capture_bed} | grep ^all >  ${pair_id}.genomecov.txt
+  bedtools coverage -sorted -hist -g ${btoolsgenome} -b ${sbam} -a ${capture_bed} | grep ^all >  ${pair_id}.genomecov.txt
   """
 }
 
@@ -210,22 +214,25 @@ process parse_stat {
 process gatkbam {
 
   publishDir "$baseDir/output", mode: 'copy'
-  cpus 4
 
   input:
-  set pair_id, file(dbam) from aligned
+  set pair_id, file(dbam),file(idx) from aligned
 
   output:
   set file("${pair_id}.final.bam") into gatkbam
+  set file("${pair_id}.final.bai") into gbamidx
   set file("${pair_id}.final.bam") into sambam
   set file("${pair_id}.final.bam") into platbam
+  set file("${pair_id}.final.bai") into platidx
+
   
   """
-  module load module subread/1.5.0-intel gatk/3.3-0
-  java -Xmx4g -jar $GATK_JAR -T RealignerTargetCreator -known ${knownindel} -R ${index_path}/${index_name} -o ${pair_id}.bam.list -I ${dbam}
-  java -Xmx4g -jar $GATK_JAR -I ${dbam} -R ${index_path}/${index_name}.fa --filter_mismatching_base_and_quals -T IndelRealigner -targetIntervals ${pair_id}.bam.list -o ${pair_id}.realigned.bam
-  java -Xmx4g -jar $GATK_JAR -l INFO -R ${index_path}/${index_name} --knownSites ${dbsnp} -I ${pair_id}.realigned.bam -T BaseRecalibrator -cov ReadGroupCovariate -cov QualityScoreCovariate -cov CycleCovariate -cov ContextCovariate -o ${pair_id}.recal_data.grp
-  java -Xmx4g -jar $GATK_JAR -T PrintReads -R ${index_path}/${index_name} -I ${pair_id}.realigned.bam -BQSR ${pair_id}.recal_data.grp -o ${pair_id}.final.bam
+  module load gatk/3.3-0 samtools/intel/1.3
+  samtools index ${dbam}
+  java -Xmx4g -jar $GATK_JAR -T RealignerTargetCreator -known ${knownindel} -R ${gatkref} -o ${pair_id}.bam.list -I ${dbam}
+  java -Xmx4g -jar $GATK_JAR -I ${dbam} -R ${gatkref} --filter_mismatching_base_and_quals -T IndelRealigner -targetIntervals ${pair_id}.bam.list -o ${pair_id}.realigned.bam
+  java -Xmx4g -jar $GATK_JAR -l INFO -R ${gatkref} --knownSites ${dbsnp} -I ${pair_id}.realigned.bam -T BaseRecalibrator -cov ReadGroupCovariate -cov QualityScoreCovariate -cov CycleCovariate -cov ContextCovariate -o ${pair_id}.recal_data.grp
+  java -Xmx4g -jar $GATK_JAR -T PrintReads -R ${gatkref} -I ${pair_id}.realigned.bam -BQSR ${pair_id}.recal_data.grp -o ${pair_id}.final.bam
   """
 }
 
@@ -239,14 +246,16 @@ process gatk {
 
   input:
   set file(gbam) from gatkbam.toList()
+  set file(gidx) from gbamidx.toList()
   output:
   set file("final.gatkpanel.vcf.gz") into gatkvcf
-     script:
+  script:
   """
-  module load module gatk/3.3-0 vcftools/0.1.11 bedtools/2.25.0 samtools/intel/1.3
-
-  java -jar $GATK_JAR -R ${index_path}/${index_name}.fa -D ${dbsnp} -T HaplotypeCaller -stand_call_conf 30 -stand_emit_conf 10.0 -A FisherStrand -A QualByDepth -A VariantType -A DepthPerAlleleBySample -A HaplotypeScore -A AlleleBalance -I ${gbam.join(' -I ')}  -o final.gatk.vcf -nt 1 -nct 32
-  vcf-annotate -n --fill-type final.gatk.vcf | java -jar $SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (QD > 2) & (FS <= 60) & (MQ > 40) & (DP > 10))' | bedtools intersect -header -a stdin -b ${targetbed} |bgzip > final.gatkpanel.vcf};
+  module load gatk/3.3-0 bedtools/2.25.0 snpeff/4.2
+  module load vcftools/0.1.11 
+  ls *.bam > final.bam.list  
+  java -Xmx4g -jar $GATK_JAR -R ${gatkref} -D ${dbsnp} -T HaplotypeCaller -stand_call_conf 30 -stand_emit_conf 10.0 -A FisherStrand -A QualByDepth -A VariantType -A DepthPerAlleleBySample -A HaplotypeScore -A AlleleBalance -I final.bam.list -o final.gatk.vcf -nt 1 -nct 32
+  vcf-annotate -n --fill-type final.gatk.vcf | java -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (QD > 2) & (FS <= 60) & (MQ > 40) & (DP > 10))' | bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > final.gatkpanel.vcf.gz;
 
   """
 }
@@ -254,7 +263,7 @@ process gatk {
 process mpileup {
 
   publishDir "$baseDir/output", mode: 'copy'
-  cpus 4
+  cpus 32
 
   input:
   set file(gbam) from sambam.toList()
@@ -262,10 +271,46 @@ process mpileup {
   set file("final.sampanel.vcf.gz") into samvcf
   script:
   """
-  module load module samtools/intel/1.3 vcftools/0.1.11 bedtools/2.25.0 bcftools/intel/1.3
-  ls *.bam > final.bam.list  
-  samtools mpileup -t 'AD,ADF,ADR,INFO/AD,SP' -ug -Q20 -C50 -f ${index_path}/${index_name}.fa -b final.bam.list | bcftools call --format-fields gq,gp -vmO z -o final.sam.vcf.gz
-  vcf-annotate -n --fill-type final.sam.vcf.gz ate -n --fill-type final.sam.vcf.gz | java -jar $SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (MQ >= 20) & (DP >= 10))' |bedtools intersect -header -a stdin -b ${targetbed} |bgzip > final.sampanel.vcf.gz
+  module load samtools/intel/1.3 vcftools/0.1.11 bedtools/2.25.0 bcftools/intel/1.3 snpeff/4.2
+  module load vcftools/0.1.1
+  ls *.bam > final.bam.list
+  cut -f 1 /project/shared/bicf_workflow_ref/GRCh38/genome.fa.fai | xargs -I {} -n 1 -P 32 sh -c "samtools mpileup -t 'AD,ADF,ADR,INFO/AD,SP' -ug -Q20 -C50 -f /project/shared/bicf_workflow_ref/GRCh38/genome.fa -b final.bam.list {} | bcftools call --format-fields gq,gp -vmO z -o final.sam.{}.vcf.gz"
+  vcf-concat final.sam.*.vcf.gz | vcf-annotate -n --fill-type final.sam.vcf.gz | java -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (MQ >= 20) & (DP >= 10))' |bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > final.sampanel.vcf.gz
+  """
+}
+process speedseq {
+
+  publishDir "$baseDir/output", mode: 'copy'
+  cpus 32
+  input:
+  set file(gbam) from ssbam.toList()
+  output:
+  set file("final.sspanel.vcf.gz") into ssvcf
+  script:
+  """
+  module load samtools/intel/1.3 bedtools/2.25.0 bcftools/intel/1.3 snpeff/4.2 speedseq/20160506
+  module load vcftools/0.1.1
+  speedseq var -q 10 -t 32 -o final.ssvar ${index_path}/${index_name}.fa ${gbam}
+  vcf-annotate -n --fill-type -n final.ssvar.vcf.gz | java -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (DP >= 10))' |bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > final.sspanel.vcf.gz
+  """
+}
+process platypus {
+
+  publishDir "$baseDir/output", mode: 'copy'
+  cpus 32
+
+  input:
+  set file(gbam) from platbam.toList()
+  set file(gidx) from platidx.toList()
+
+  output:
+  set file("final.platpanel.vcf.gz") into platvcf
+  script:
+  """
+  module load bedtools/2.25.0 snpeff/4.2 platypus/gcc/0.8.1  bcftools/intel/1.3 samtools/intel/1.3
+  module load vcftools/0.1.11
+  Platypus.py callVariants --minMapQual=10 --mergeClusteredVariants=1 --nCPU=32 --bamFiles="${(gbam as List).join(',')}" --refFile=${index_path}/${index_name}.fa --output=final.platypus.vcf
+  vcf-annotate -n --fill-type -n final.platypus.vcf | java -jar \$SNPEFF_HOME/SnpSift.jar filter "((QUAL >= 10) & (QD > 2) & (FILTER = 'PASS'))" |bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > final.platpanel.vcf.gz
   """
 }
 
