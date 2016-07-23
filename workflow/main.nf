@@ -124,7 +124,7 @@ process alignpe {
   script:
   """
   module load speedseq/20160506 picard/1.127
-  speedseq align -R '@RG\tLB:tx\tPL:illumina\tID:${pair_id}\tPU:barcode\tSM:${pair_id}' -o ${pair_id} -t 32 ${index_path}/${index_name}.fa ${fq1} ${fq2}
+  speedseq align -R '@RG\tLB:tx\tPL:illumina\tID:${pair_id}\tPU:barcode\tSM:${pair_id}' -o ${pair_id} -t 30 ${index_path}/${index_name}.fa ${fq1} ${fq2}
   java -Xmx4g -jar \$PICARD/picard.jar CollectInsertSizeMetrics INPUT=${pair_id}.bam HISTOGRAM_FILE=${pair_id}.hist.ps REFERENCE_SEQUENCE=${index_path}/${index_name}.fa OUTPUT=${pair_id}.hist.txt
   """
 }
@@ -145,7 +145,7 @@ process alignse {
   script:
   """
   module load bwa/intel/0.7.12 samtools/intel/1.3 picard/1.127
-  bwa mem -M -R '@RG\tLB:tx\tPL:illumina\tID:${pair_id}\tPU:barcode\tSM:${pair_id}' -t 32 ${index_path}/${index_name}.fa ${fq1} > output.sam
+  bwa mem -M -R '@RG\tLB:tx\tPL:illumina\tID:${pair_id}\tPU:barcode\tSM:${pair_id}' -t 30 ${index_path}/${index_name}.fa ${fq1} > output.sam
   samtools view -b -u -S -o output.unsort.bam output.sam
   samtools sort -o output.dups.bam output.unsort.bam
   java -Xmx4g -jar \$PICARD/picard.jar MarkDuplicates INPUT=output.dups.bam REMOVE_DUPLICATES=true VALIDATION_STRINGENCY=LENIENT ASSUME_SORTED=true METRICS_FILE=${pair_id}.dups OUTPUT=${pair_id}.bam
@@ -229,10 +229,10 @@ process gatkbam {
   """
   module load gatk/3.3-0 samtools/intel/1.3
   samtools index ${dbam}
-  java -Xmx4g -jar $GATK_JAR -T RealignerTargetCreator -known ${knownindel} -R ${gatkref} -o ${pair_id}.bam.list -I ${dbam}
+  java -Xmx4g -jar $GATK_JAR -T RealignerTargetCreator -known ${knownindel} -R ${gatkref} -o ${pair_id}.bam.list -I ${dbam} -nt 30 -nct 1
   java -Xmx4g -jar $GATK_JAR -I ${dbam} -R ${gatkref} --filter_mismatching_base_and_quals -T IndelRealigner -targetIntervals ${pair_id}.bam.list -o ${pair_id}.realigned.bam
-  java -Xmx4g -jar $GATK_JAR -l INFO -R ${gatkref} --knownSites ${dbsnp} -I ${pair_id}.realigned.bam -T BaseRecalibrator -cov ReadGroupCovariate -cov QualityScoreCovariate -cov CycleCovariate -cov ContextCovariate -o ${pair_id}.recal_data.grp
-  java -Xmx4g -jar $GATK_JAR -T PrintReads -R ${gatkref} -I ${pair_id}.realigned.bam -BQSR ${pair_id}.recal_data.grp -o ${pair_id}.final.bam
+  java -Xmx4g -jar $GATK_JAR -l INFO -R ${gatkref} --knownSites ${dbsnp} -I ${pair_id}.realigned.bam -T BaseRecalibrator -cov ReadGroupCovariate -cov QualityScoreCovariate -cov CycleCovariate -cov ContextCovariate -o ${pair_id}.recal_data.grp -nt 1 -nct 30
+  java -Xmx4g -jar $GATK_JAR -T PrintReads -R ${gatkref} -I ${pair_id}.realigned.bam -BQSR ${pair_id}.recal_data.grp -o ${pair_id}.final.bam -nt 1 -nct 8
   """
 }
 
@@ -254,7 +254,7 @@ process gatk {
   module load gatk/3.3-0 bedtools/2.25.0 snpeff/4.2
   module load vcftools/0.1.11 
   ls *.bam > final.bam.list  
-  java -Xmx4g -jar $GATK_JAR -R ${gatkref} -D ${dbsnp} -T HaplotypeCaller -stand_call_conf 30 -stand_emit_conf 10.0 -A FisherStrand -A QualByDepth -A VariantType -A DepthPerAlleleBySample -A HaplotypeScore -A AlleleBalance -I final.bam.list -o final.gatk.vcf -nt 1 -nct 32
+  java -Xmx10g -jar $GATK_JAR -R ${gatkref} -D ${dbsnp} -T HaplotypeCaller -stand_call_conf 30 -stand_emit_conf 10.0 -A FisherStrand -A QualByDepth -A VariantType -A DepthPerAlleleBySample -A HaplotypeScore -A AlleleBalance -I final.bam.list -o final.gatk.vcf -nt 1 -nct 8
   vcf-annotate -n --fill-type final.gatk.vcf | java -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (QD > 2) & (FS <= 60) & (MQ > 40) & (DP > 10))' | bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > final.gatkpanel.vcf.gz;
 
   """
@@ -274,7 +274,7 @@ process mpileup {
   module load samtools/intel/1.3 vcftools/0.1.11 bedtools/2.25.0 bcftools/intel/1.3 snpeff/4.2
   module load vcftools/0.1.1
   ls *.bam > final.bam.list
-  cut -f 1 /project/shared/bicf_workflow_ref/GRCh38/genome.fa.fai | xargs -I {} -n 1 -P 32 sh -c "samtools mpileup -t 'AD,ADF,ADR,INFO/AD,SP' -ug -Q20 -C50 -f /project/shared/bicf_workflow_ref/GRCh38/genome.fa -b final.bam.list {} | bcftools call --format-fields gq,gp -vmO z -o final.sam.{}.vcf.gz"
+  cut -f 1 /project/shared/bicf_workflow_ref/GRCh38/genome.fa.fai | xargs -I {} -n 1 -P 32 sh -c "samtools mpileup -t 'AD,ADF,ADR,INFO/AD,SP' -ug -Q20 -C50 -f /project/shared/bicf_workflow_ref/GRCh38/genome.fa -b final.bam.list -r {} | bcftools call --format-fields gq,gp -vmO z -o final.sam.{}.vcf.gz"
   vcf-concat final.sam.*.vcf.gz | vcf-annotate -n --fill-type final.sam.vcf.gz | java -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (MQ >= 20) & (DP >= 10))' |bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > final.sampanel.vcf.gz
   """
 }
