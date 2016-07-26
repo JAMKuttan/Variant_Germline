@@ -120,7 +120,6 @@ process alignpe {
   file("${pair_id}.hist.txt") into insertsize
   when:
   params.pairs == 'pe'
-  params.alignment == 1
   script:
   """
   module load speedseq/20160506 picard/1.127
@@ -142,7 +141,6 @@ process alignse {
 
   when:
   params.pairs == 'se'
-  params.alignment == 1
   script:
   """
   module load bwa/intel/0.7.12 samtools/intel/1.3 picard/1.127
