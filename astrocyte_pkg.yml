@@ -7,19 +7,19 @@
 # -----------------------------------------------------------------------------
 
 # A unique identifier for the workflow package, text/underscores only
-name: 'rnaseq_bicf'
+name: 'germline_bicf'
 # Who wrote this?
 author: 'Brandi Cantarel'
 # A contact email address for questions
 email: 'biohpc-help@utsouthwestern.edu'
 # A more informative title for the workflow package
-title: 'BICF RNASeq Analysis Workflow'
+title: 'BICF Germline Variant Analysis Workflow'
 # A summary of the workflow package in plain text
 description: |
-  This is a workflow package for the BioHPC/BICF RNASeq workflow system.
-  It implements a simple RNASeq analysis workflow using TrimGalore, HiSAT,FeatureCounts,
-  StringTie and statistical analysis using EdgeR and Ballgown, plus a simple R Shiny
-  visualization application.
+  This is a workflow package for the BioHPC/BICF Germline Variant workflow system.
+  It implements a simple germline variant analysis workflow using TrimGalore, BWA,
+  Speedseq, GATK, Samtools and Platypus.  SNPs and Indels are integrated using BAYSIC;
+  then annotated using SNPEFF and SnpSift.
 
 # -----------------------------------------------------------------------------
 # DOCUMENTATION
@@ -41,17 +41,19 @@ documentation_files:
 # A list of clueter environment modules that this workflow requires to run.
 # Specify versioned module names to ensure reproducability.
 workflow_modules:
-  - 'trimgalore/0.4.1'
-  - 'cutadapt/1.9.1'
-  - 'speedseq/20160506'
-  - 'samtools/intel/1.3'
-  - 'picard/1.127'
-  - 'bwa/intel/0.7.12'
+  - 'bcftools/intel/1.3'
   - 'bedtools/2.25.0'
+  - 'bwa/intel/0.7.12'
+  - 'cutadapt/1.9.1'
   - 'fastqc/0.11.2'
   - 'gatk/3.3-0'
-  - 'vcftools/0.1.1'
+  - 'picard/1.127'
+  - 'platypus/gcc/0.8.1'
+  - 'samtools/intel/1.3'
   - 'snpeff/4.2'
+  - 'speedseq/20160506'
+  - 'trimgalore/0.4.1'
+  - 'vcftools/0.1.1'
 # A list of parameters used by the workflow, defining how to present them,
 # options etc in the web interface. For each parameter:
 #
@@ -94,33 +96,15 @@ workflow_parameters:
       regex: ".*(fastq|fq).gz"
       min: 1
  
- - id: pairs
-   type: select
-   required: true
-   choices:
-     - [ 'pe', 'Paired End']
-     - [ 'se', 'Single End']
-   description: |
-     In single-end sequencing, the sequencer reads a fragment from only one end to the other, generating the sequence of base pairs. In paired-end reading it starts at one read, finishes this direction at the specified read length, and then starts another round of reading from the opposite end of the fragment.
-
- - id: alignment
-   type: select
-   required: true
-   choices:
-     - [ 1, 'Aligned Fastq']
-     - [ 0, 'Input is GATK Recalibrated/Realigned BAM']
-   description: |
-     In single-end sequencing, the sequencer reads a fragment from only one end to the other, generating the sequence of base pairs. In paired-end reading it starts at one read, finishes this direction at the specified read length, and then starts another round of reading from the opposite end of the fragment.
-
-  - id: markdups
+  - id: pairs
     type: select
     required: true
     choices:
-      - [ 'mark', 'Remove Duplicates']
-      - [ 'keep', 'Keep All Sequences']
+      - [ 'pe', 'Paired End']
+      - [ 'se', 'Single End']
     description: |
-      Duplicate reads are defined as originating from the same original fragment of DNA. Duplicates are identified as read pairs having identical 5-prime positions (coordinate and strand) for both reads in a mate pair and optionally, matching unique molecular identifier reads.
-      
+      In single-end sequencing, the sequencer reads a fragment from only one end to the other, generating the sequence of base pairs. In paired-end reading it starts at one read, finishes this direction at the specified read length, and then starts another round of reading from the opposite end of the fragment.
+
   - id: design
     type: file
     required: true
@@ -136,9 +120,9 @@ workflow_parameters:
   - id: genome
     type: select
     choices:
-      - [ '/project/apps_database/iGenomes/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/', 'Human GRCh38']
-      - [ '/project/apps_database/iGenomes/Homo_sapiens/NCBI/build37.2/Sequence/BWAIndex/', 'Human GRCh37']
-      - [ '/project/apps_database/iGenomes/Mus_musculus/NCBI/GRCm38/Sequence/BWAIndex/', 'Mouse GRCh38']
+      - [ '/project/shared/bicf_workflow_ref/GRCh38', 'Human GRCh38']
+      - [ '/project/shared/bicf_workflow_ref/GRCh37', 'Human GRCh37']
+      - [ '/project/shared/bicf_workflow_ref/GRCm38', 'Mouse GRCh38']
     required: true
     description: |
       Reference genome for alignment
@@ -156,11 +140,6 @@ vizapp_r_module: 'R/3.2.1-Intel'
 # List of any CRAN packages, not provided by the modules, that must be made
 # available to the vizapp
 vizapp_cran_packages:
-  - sqldf
-  - shiny
-  - Vennerable
-  - DT
-  - ggplot2
   - gplots
   - gtools
   - RColorBrewer
@@ -168,8 +147,4 @@ vizapp_cran_packages:
 
 # # List of any Bioconductor packages, not provided by the modules, that must be made
 # available to the vizapp
-vizapp_bioc_packages:
-  - qusage
-  - ballgown
-  - edgeR
-  - DESeq2
+vizapp_bioc_packages: []

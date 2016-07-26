@@ -1,33 +1,32 @@
 #!/usr/bin/env nextflow
 
 // Default parameter values to run tests
-params.genome="/project/shared/bicf_workflow_ref/GRCh38"
-capture="$params.genome/gencode.genes.v24.chr.bed"
-dbsnp="$params.genome/dbSnp.vcf.gz"
-indel="$params.genome/Mills_G1K_indels.b38.vcf.gz"
-params.gatkref="/project/apps_database/iGenomes/Homo_sapiens/NCBI/GRCh38/Sequence/WholeGenomeFasta/genome.fa"
-params.alignment=1
 params.fastqs="$baseDir/../test_data/*.fastq.gz"
 params.pairs="pe"
 params.design="$baseDir/../test_data/design.txt"
+params.genome="/project/shared/bicf_workflow_ref/GRCh38"
+params.capture="$params.genome/gencode.genes.v24.chr.bed"
+
+dbsnp="$params.genome/dbSnp.vcf.gz"
+indel="$params.genome/Mills_G1K_indels.b38.vcf.gz"
 design_file = file(params.design)
-
-bedgenome = "$params.genome/genomefile.txt"
-btoolsgenome = file(bedgenome)
-
+btoolsgenome = file("$params.genome/genomefile.txt")
 fastqs=file(params.fastqs)
 knownindel=file(indel)
-gatkref=file(params.gatkref)
-// params genome is the directory
-// base name for the index is always genome
+gatkref=file("$params.genome/genome.fa")
 index_path = file(params.genome)
 index_name = "genome"
-capture_bed = file(capture)
+capture_bed = file(params.capture)
 dbsnp=file(dbsnp)
 
-// Pair handling, helper function taken from rnatoy
-// which is covered by the GNU General Public License v3
-// https://github.com/nextflow-io/rnatoy/blob/master/main.nf
+snpeff_vers = 'GRCh38.82';
+if (params.genome == '/project/shared/bicf_workflow_ref/GRCm38') {
+   snpeff_vers = 'GRCm38.82';
+}
+if (params.genome == '/project/shared/bicf_workflow_ref/GRCh37') {
+   snpeff_vers = 'GRCh37.75';
+}
+
 def fileMap = [:]
 
 fastqs.each {
@@ -113,9 +112,10 @@ process alignpe {
   set pair_id, file(fq1), file(fq2) from trimpe
   output:
   set pair_id, file("${pair_id}.bam"), file("${pair_id}.bam.bai") into alignpe
-  set file("${pair_id}.bam") into ssbampe
-  set file("${pair_id}.discordants.bam") into disbam
-  set file("${pair_id}.splitters.bam") into splitbam
+  file("${pair_id}.bam") into ssbampe
+  file("${pair_id}.bam") into ssidxpe
+  file("${pair_id}.discordants.bam") into disbam
+  file("${pair_id}.splitters.bam") into splitbam
 
   file("${pair_id}.hist.txt") into insertsize
   when:
@@ -137,7 +137,8 @@ process alignse {
   set pair_id, file(fq1) from trimse
   output:
   set pair_id, file("${pair_id}.bam"),file("${pair_id}.bam.bai") into alignse
-  set file("${pair_id}.bam") into ssbamse
+  file("${pair_id}.bam") into ssbamse
+  file("${pair_id}.bam") into ssidxse
 
   when:
   params.pairs == 'se'
@@ -163,6 +164,11 @@ Channel
   .empty()
   .mix(ssbamse, ssbampe)
   .set { ssbam }
+
+Channel
+  .empty()
+  .mix(ssidxse, ssidxpe)
+  .set { ssidx }
 
 //
 // Calculate Metrics of Quality of Alignment
@@ -219,11 +225,12 @@ process gatkbam {
   set pair_id, file(dbam),file(idx) from aligned
 
   output:
-  set file("${pair_id}.final.bam") into gatkbam
-  set file("${pair_id}.final.bai") into gbamidx
-  set file("${pair_id}.final.bam") into sambam
-  set file("${pair_id}.final.bam") into platbam
-  set file("${pair_id}.final.bai") into platidx
+  file("${pair_id}.final.bam") into gatkbam
+  file("${pair_id}.final.bai") into gbamidx
+  file("${pair_id}.final.bam") into sambam
+  file("${pair_id}.final.bai") into samidx
+  file("${pair_id}.final.bam") into platbam
+  file("${pair_id}.final.bai") into platidx
 
   
   """
@@ -245,14 +252,13 @@ process gatk {
   cpus 32
 
   input:
-  set file(gbam) from gatkbam.toList()
-  set file(gidx) from gbamidx.toList()
+  file(gbam) from gatkbam.toList()
+  file(gidx) from gbamidx.toList()
   output:
-  set file("final.gatkpanel.vcf.gz") into gatkvcf
+  file("final.gatkpanel.vcf.gz") into gatkvcf
   script:
   """
-  module load gatk/3.3-0 bedtools/2.25.0 snpeff/4.2
-  module load vcftools/0.1.11 
+  module load gatk/3.3-0 bedtools/2.25.0 snpeff/4.2 vcftools/0.1.11 
   ls *.bam > final.bam.list  
   java -Xmx10g -jar $GATK_JAR -R ${gatkref} -D ${dbsnp} -T HaplotypeCaller -stand_call_conf 30 -stand_emit_conf 10.0 -A FisherStrand -A QualByDepth -A VariantType -A DepthPerAlleleBySample -A HaplotypeScore -A AlleleBalance -I final.bam.list -o final.gatk.vcf -nt 1 -nct 8
   vcf-annotate -n --fill-type final.gatk.vcf | java -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (QD > 2) & (FS <= 60) & (MQ > 40) & (DP > 10))' | bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > final.gatkpanel.vcf.gz;
@@ -266,16 +272,16 @@ process mpileup {
   cpus 32
 
   input:
-  set file(gbam) from sambam.toList()
+  file(gbam) from sambam.toList()
+  file(gidx) from samidx.toList()
   output:
-  set file("final.sampanel.vcf.gz") into samvcf
+  file("final.sampanel.vcf.gz") into samvcf
   script:
   """
   module load samtools/intel/1.3 vcftools/0.1.11 bedtools/2.25.0 bcftools/intel/1.3 snpeff/4.2
-  module load vcftools/0.1.1
   ls *.bam > final.bam.list
   cut -f 1 /project/shared/bicf_workflow_ref/GRCh38/genome.fa.fai | xargs -I {} -n 1 -P 32 sh -c "samtools mpileup -t 'AD,ADF,ADR,INFO/AD,SP' -ug -Q20 -C50 -f /project/shared/bicf_workflow_ref/GRCh38/genome.fa -b final.bam.list -r {} | bcftools call --format-fields gq,gp -vmO z -o final.sam.{}.vcf.gz"
-  vcf-concat final.sam.*.vcf.gz | vcf-annotate -n --fill-type final.sam.vcf.gz | java -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (MQ >= 20) & (DP >= 10))' |bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > final.sampanel.vcf.gz
+  vcf-concat final.sam.*.vcf.gz | vcf-sort |vcf-annotate -n --fill-type | java -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (MQ >= 20) & (DP >= 10))' |bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > final.sampanel.vcf.gz
   """
 }
 process speedseq {
@@ -283,15 +289,19 @@ process speedseq {
   publishDir "$baseDir/output", mode: 'copy'
   cpus 32
   input:
-  set file(gbam) from ssbam.toList()
+  file(gbam) from ssbam.toList()
+  file(gidx) from ssidx.toList()
   output:
-  set file("final.sspanel.vcf.gz") into ssvcf
+  file("final.sspanel.vcf.gz") into ssvcf
+  file("final.complex.vcf.gz") into complexvcf
   script:
   """
-  module load samtools/intel/1.3 bedtools/2.25.0 bcftools/intel/1.3 snpeff/4.2 speedseq/20160506
-  module load vcftools/0.1.1
+  module load samtools/intel/1.3 bedtools/2.25.0 bcftools/intel/1.3 snpeff/4.2 speedseq/20160506 vcftools/0.1.11
   speedseq var -q 10 -t 32 -o final.ssvar ${index_path}/${index_name}.fa ${gbam}
   vcf-annotate -n --fill-type -n final.ssvar.vcf.gz | java -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (DP >= 10))' |bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > final.sspanel.vcf.gz
+  zgrep '#' final.sspanel.vcf.gz > final.complex.vcf
+  zgrep 'TYPE=complex' final.sspanel.vcf.gz >> final.complex.vcf
+  bgzip final.complex.vcf
   """
 }
 process platypus {
@@ -300,17 +310,48 @@ process platypus {
   cpus 32
 
   input:
-  set file(gbam) from platbam.toList()
-  set file(gidx) from platidx.toList()
+  file(gbam) from platbam.toList()
+  file(gidx) from platidx.toList()
 
   output:
-  set file("final.platpanel.vcf.gz") into platvcf
+  file("final.platpanel.vcf.gz") into platvcf
+  script:
+  """
+  module load bedtools/2.25.0 snpeff/4.2 platypus/gcc/0.8.1  bcftools/intel/1.3 samtools/intel/1.3 vcftools/0.1.11
+  Platypus.py callVariants --minMapQual=10 --mergeClusteredVariants=1 --nCPU=30 --bamFiles="${(gbam as List).join(',')}" --refFile=${index_path}/${index_name}.fa --output=final.platypus.vcf
+  vcf-annotate -n --fill-type -n final.platypus.vcf | java -jar \$SNPEFF_HOME/SnpSift.jar filter "((QUAL >= 10) & (QD > 2) & (FILTER = 'PASS'))" |bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > final.platpanel.vcf.gz
+  """
+}
+
+process integrate {
+  publishDir "$baseDir/output", mode: 'copy'
+
+  input:
+  file(pvcf) from platvcf
+  file(ssvcf)from ssvcf
+  file(samvcf) from samvcf
+  file(gvcf) from gatkvcf
+  file(complex) from complexvcf
+
+  output:
+  file("annot.vcf.gz") into finalvcf
   script:
   """
   module load bedtools/2.25.0 snpeff/4.2 platypus/gcc/0.8.1  bcftools/intel/1.3 samtools/intel/1.3
   module load vcftools/0.1.11
-  Platypus.py callVariants --minMapQual=10 --mergeClusteredVariants=1 --nCPU=32 --bamFiles="${(gbam as List).join(',')}" --refFile=${index_path}/${index_name}.fa --output=final.platypus.vcf
-  vcf-annotate -n --fill-type -n final.platypus.vcf | java -jar \$SNPEFF_HOME/SnpSift.jar filter "((QUAL >= 10) & (QD > 2) & (FILTER = 'PASS'))" |bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > final.platpanel.vcf.gz
+  zcat ${ssvcf} | bedtools intersect -v -header -a stdin -b ${complex} | bgzip > ss.shuff.vcf.gz
+  vcf-shuffle-cols -t ${ssvcf} ${pvcf} | vcf-sort |bedtools intersect -v -header -a stdin -b ${complex} | bgzip > plat.shuff.vcf.gz
+  vcf-shuffle-cols -t ${ssvcf} ${gvcf} | vcf-sort | bedtools intersect -v -header -a stdin -b ${complex} | bgzip > gatk.shuff.vcf.gz
+  vcf-shuffle-cols -t ${ssvcf} ${samvcf} | bedtools intersect -v -header -a stdin -b ${complex} | bgzip > sam.shuff.vcf.gz
+  tabix ss.shuff.vcf.gz
+  tabix plat.shuff.vcf.gz
+  tabix gatk.shuff.vcf.gz
+  tabix sam.shuff.vcf.gz
+  vcf-compare ss.shuff.vcf.gz sam.shuff.vcf.gz gatk.shuff.vcf.gz plat.shuff.vcf.gz > vcf_compare.out
+  vcf-isec -f --prefix integrate ss.shuff.vcf.gz sam.shuff.vcf.gz gatk.shuff.vcf.gz plat.shuff.vcf.gz
+  #perl $baseDir/scripts/baysic_blc.pl -c ${complex} -f ${index_path}/${index_name}.fa ss.shuff.vcf.gz sam.shuff.vcf.gz gatk.shuff.vcf.gz plat.shuff.vcf.gz
+  vcf-concat ${complex} integrate*_*.vcf.gz |vcf-sort |bgzip > final.integrated.vcf.gz
+  java -Xmx10g -jar \$SNPEFF_HOME/snpEff.jar -no-intergenic -lof -c \$SNPEFF_HOME/snpEff.config ${snpeff_vers} final.integrated.vcf.gz | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar annotate ${index_path}/dbSnp.vcf.gz -  | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar annotate ${index_path}/clinvar.vcf.gz - | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar annotate ${index_path}/ExAC.vcf.gz - | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar annotate ${index_path}/cosmic.vcf.gz - | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar dbnsfp -v -db ${index_path}/dbNSFP.txt.gz - | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar gwasCat -db ${index_path}/gwas_catalog.tsv - |bgzip > annot.vcf.gz
   """
 }
 
