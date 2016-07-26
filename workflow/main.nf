@@ -229,7 +229,6 @@ process gatkbam {
   file("${pair_id}.final.bai") into samidx
   file("${pair_id}.final.bam") into platbam
   file("${pair_id}.final.bai") into platidx
-
   
   """
   module load gatk/3.3-0 samtools/intel/1.3
@@ -260,7 +259,6 @@ process gatk {
   ls *.bam > final.bam.list  
   java -Xmx10g -jar $GATK_JAR -R ${gatkref} -D ${dbsnp} -T HaplotypeCaller -stand_call_conf 30 -stand_emit_conf 10.0 -A FisherStrand -A QualByDepth -A VariantType -A DepthPerAlleleBySample -A HaplotypeScore -A AlleleBalance -I final.bam.list -o final.gatk.vcf -nt 1 -nct 8
   vcf-annotate -n --fill-type final.gatk.vcf | java -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (QD > 2) & (FS <= 60) & (MQ > 40) & (DP > 10))' | bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > final.gatkpanel.vcf.gz;
-
   """
 }
 
