@@ -274,7 +274,7 @@ process mpileup {
   file("final.sampanel.vcf.gz") into samvcf
   script:
   """
-  module load samtools/intel/1.3 vcftools/0.1.11 bedtools/2.25.0 bcftools/intel/1.3 snpeff/4.2
+  module load samtools/intel/1.3 bedtools/2.25.0 bcftools/intel/1.3 snpeff/4.2 vcftools/0.1.11
   ls *.bam > final.bam.list
   cut -f 1 /project/shared/bicf_workflow_ref/GRCh38/genome.fa.fai | xargs -I {} -n 1 -P 32 sh -c "samtools mpileup -t 'AD,ADF,ADR,INFO/AD,SP' -ug -Q20 -C50 -f /project/shared/bicf_workflow_ref/GRCh38/genome.fa -b final.bam.list -r {} | bcftools call --format-fields gq,gp -vmO z -o final.sam.{}.vcf.gz"
   vcf-concat final.sam.*.vcf.gz | vcf-sort |vcf-annotate -n --fill-type | java -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (MQ >= 20) & (DP >= 10))' |bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > final.sampanel.vcf.gz
@@ -313,7 +313,7 @@ process platypus {
   file("final.platpanel.vcf.gz") into platvcf
   script:
   """
-  module load bedtools/2.25.0 snpeff/4.2 platypus/gcc/0.8.1  bcftools/intel/1.3 samtools/intel/1.3 vcftools/0.1.11
+  module load bedtools/2.25.0 snpeff/4.2 platypus/gcc/0.8.1 bcftools/intel/1.3 samtools/intel/1.3 vcftools/0.1.11
   Platypus.py callVariants --minMapQual=10 --mergeClusteredVariants=1 --nCPU=30 --bamFiles="${(gbam as List).join(',')}" --refFile=${index_path}/${index_name}.fa --output=final.platypus.vcf
   vcf-annotate -n --fill-type -n final.platypus.vcf | java -jar \$SNPEFF_HOME/SnpSift.jar filter "((QUAL >= 10) & (QD > 2) & (FILTER = 'PASS'))" |bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > final.platpanel.vcf.gz
   """
