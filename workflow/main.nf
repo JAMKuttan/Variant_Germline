@@ -291,7 +291,7 @@ process mpileup {
   """
   module load samtools/intel/1.3 bedtools/2.25.0 bcftools/intel/1.3 snpeff/4.2 vcftools/0.1.11
   ls *.bam > final.bam.list
-  cut -f 1 ${index_path}/${index_name}.fa.fai | xargs -I {} -n 1 -P 32 sh -c "samtools mpileup -t 'AD,ADF,ADR,INFO/AD,SP' -ug -Q20 -C50 -f ${index_path}/${index_name}.fa -b final.bam.list -r {} | bcftools call --format-fields gq,gp -vmO z -o final.sam.{}.vcf.gz"
+  cut -f 1 ${index_path}/genomefile.txt | xargs -I {} -n 1 -P 32 sh -c "samtools mpileup -t 'AD,ADF,ADR,INFO/AD,SP' -ug -Q20 -C50 -f ${index_path}/${index_name}.fa -b final.bam.list -r {} | bcftools call --format-fields gq,gp -vmO z -o final.sam.{}.vcf.gz"
   vcf-concat final.sam.*.vcf.gz | vcf-sort |vcf-annotate -n --fill-type | java -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (MQ >= 20) & (DP >= 10))' |bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > final.sampanel.vcf.gz
   """
 }
