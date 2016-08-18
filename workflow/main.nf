@@ -273,7 +273,8 @@ process gatk {
   script:
   """
   module load gatk/3.5 bedtools/2.25.0 snpeff/4.2 vcftools/0.1.11 
-  java -Xmx16g -jar $GATK_JAR -R ${gatkref} -D ${dbsnp} -T GenotypeGVCFs -o final.gatk.vcf -nt 4 --variant "${(gvcf as List).join(' --variant ')}"
+  java -Xmx16g -jar $GATK_JAR -R ${gatkref} -D ${dbsnp} -T GenotypeGVCFs -o final.gatk.vcf -nt 4 --variant ${(gvcf as List).join(' --variant ')}
+  vcf-annotate -n --fill-type final.gatk.vcf | java -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (QD > 2) & (FS <= 60) & (MQ > 40) & (DP >= 10))' |bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > final.gatkpanel.vcf.gz
   """
 }
 
@@ -310,9 +311,8 @@ process speedseq {
   module load samtools/intel/1.3 bedtools/2.25.0 bcftools/intel/1.3 snpeff/4.2 speedseq/20160506 vcftools/0.1.11
   speedseq var -q 10 -t 32 -o final.ssvar ${index_path}/${index_name}.fa ${gbam}
   vcf-annotate -n --fill-type -n final.ssvar.vcf.gz | java -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (DP >= 10))' |bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > final.sspanel.vcf.gz
-  zgrep '#' final.sspanel.vcf.gz > final.complex.vcf
-  zgrep 'TYPE=complex' final.sspanel.vcf.gz >> final.complex.vcf
-  bgzip final.complex.vcf
+  java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar filter "(TYPE='complex')" final.sspanel.vcf.gz |bgzip> final.complex.vcf.gz
+
   """
 }
 process platypus {
@@ -360,7 +360,7 @@ process integrate {
   tabix sam.shuff.vcf.gz
   vcf-compare ss.shuff.vcf.gz sam.shuff.vcf.gz gatk.shuff.vcf.gz plat.shuff.vcf.gz > vcf_compare.out
   vcf-isec -f --prefix integrate ss.shuff.vcf.gz sam.shuff.vcf.gz gatk.shuff.vcf.gz plat.shuff.vcf.gz
-  perl $baseDir/scripts/baysic_blc.pl -c ${complex} -f ${index_path}/${index_name}.fa ss.shuff.vcf.gz sam.shuff.vcf.gz gatk.shuff.vcf.gz plat.shuff.vcf.gz
+  perl $baseDir/scripts/baysic_blc.pl -c ${complex} -e $baseDir -f ${index_path}/${index_name}.fa ss.shuff.vcf.gz sam.shuff.vcf.gz gatk.shuff.vcf.gz plat.shuff.vcf.gz
   #vcf-concat ${complex} integrate*_*.vcf.gz |vcf-sort |bgzip > final.integrated.vcf.gz
   java -Xmx10g -jar \$SNPEFF_HOME/snpEff.jar -no-intergenic -lof -c \$SNPEFF_HOME/snpEff.config ${snpeff_vers} final.integrated.vcf.gz | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar annotate ${index_path}/dbSnp.vcf.gz -  | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar annotate ${index_path}/clinvar.vcf.gz - | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar annotate ${index_path}/ExAC.vcf.gz - | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar annotate ${index_path}/cosmic.vcf.gz - | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar dbnsfp -v -db ${index_path}/dbNSFP.txt.gz - | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar gwasCat -db ${index_path}/gwas_catalog.tsv - |bgzip > annot.vcf.gz
   """

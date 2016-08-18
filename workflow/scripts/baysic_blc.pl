@@ -3,7 +3,7 @@
 
 use Getopt::Long qw(:config no_ignore_case no_auto_abbrev);
 my %opt = ();
-my $results = GetOptions (\%opt,'fasta|f=s','help|h','prefix|p=s','complex|c=s');
+my $results = GetOptions (\%opt,'fasta|f=s','help|h','prefix|p=s','complex|c=s','execdir|e=s');
 my @zipvcf = @ARGV;
 
 unless($opt{fasta}) {
@@ -43,14 +43,14 @@ while (my $line = <VC>) {
 	$total -= $ct;
     }
 }
-my @g = bits(scalar(@vcffiles));
+my @g = bits(scalar(@zipvcf));
 $ct{$g[0]} = $total;
 foreach (@g) {
     $ct{$_} = 0 unless ($ct{$_});
     print CTS join("\t",$_,$ct{$_}),"\n";
 }
 
-system("Rscript /home2/s166458/projects/variant_germline/workflow/scripts/lca.R -c baysic.cts -s baysic.stats");
+system("Rscript $opt{execdir}\/scripts/lca.R -c baysic.cts -s baysic.stats");
 
 my @key1 = split(//,$g[-1]);
 my @key2;
