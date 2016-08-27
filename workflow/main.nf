@@ -148,9 +148,9 @@ process alignse {
   """
   module load bwa/intel/0.7.15 samtools/intel/1.3 picard/1.127 speedseq/20160506
   bwa mem -M -R '@RG\tLB:tx\tPL:illumina\tID:${pair_id}\tPU:barcode\tSM:${pair_id}' -t 30 ${index_path}/${index_name}.fa ${fq1} > output.sam
-  sambamba view -t 30 -S -o output.unsort.bam output.sam
+  sambamba view -f bam -t 30 -S -o output.unsort.bam output.sam
   sambamba sort -t 30 -o output.dups.bam output.unsort.bam
-  sambamba markdup -t 30 -r output.dups.bam ${pair_id}.bam
+  sambamba markdup -t 20 -r output.dups.bam ${pair_id}.bam
   sambamba -t 30 index ${pair_id}.bam
   """
 }
@@ -248,10 +248,10 @@ process gatkbam {
   """
   module load gatk/3.5 samtools/intel/1.3
   samtools index ${dbam}
-  java -Xmx4g -jar $GATK_JAR -T RealignerTargetCreator -known ${knownindel} -R ${gatkref} -o ${pair_id}.bam.list -I ${dbam} -nt 30 -nct 1
-  java -Xmx4g -jar $GATK_JAR -I ${dbam} -R ${gatkref} --filter_mismatching_base_and_quals -T IndelRealigner -targetIntervals ${pair_id}.bam.list -o ${pair_id}.realigned.bam
-  java -Xmx4g -jar $GATK_JAR -l INFO -R ${gatkref} --knownSites ${dbsnp} -I ${pair_id}.realigned.bam -T BaseRecalibrator -cov ReadGroupCovariate -cov QualityScoreCovariate -cov CycleCovariate -cov ContextCovariate -o ${pair_id}.recal_data.grp -nt 1 -nct 30
-  java -Xmx4g -jar $GATK_JAR -T PrintReads -R ${gatkref} -I ${pair_id}.realigned.bam -BQSR ${pair_id}.recal_data.grp -o ${pair_id}.final.bam -nt 1 -nct 8
+  java -Xmx4g -jar \$GATK_JAR -T RealignerTargetCreator -known ${knownindel} -R ${gatkref} -o ${pair_id}.bam.list -I ${dbam} -nt 30 -nct 1
+  java -Xmx4g -jar \$GATK_JAR -I ${dbam} -R ${gatkref} --filter_mismatching_base_and_quals -T IndelRealigner -targetIntervals ${pair_id}.bam.list -o ${pair_id}.realigned.bam
+  java -Xmx4g -jar \$GATK_JAR -l INFO -R ${gatkref} --knownSites ${dbsnp} -I ${pair_id}.realigned.bam -T BaseRecalibrator -cov ReadGroupCovariate -cov QualityScoreCovariate -cov CycleCovariate -cov ContextCovariate -o ${pair_id}.recal_data.grp -nt 1 -nct 30
+  java -Xmx4g -jar \$GATK_JAR -T PrintReads -R ${gatkref} -I ${pair_id}.realigned.bam -BQSR ${pair_id}.recal_data.grp -o ${pair_id}.final.bam -nt 1 -nct 8
   """
 }
 
@@ -271,7 +271,7 @@ process gatkgvcf {
   script:
   """
   module load gatk/3.5 bedtools/2.25.0 snpeff/4.2 vcftools/0.1.11 
-  java -Xmx10g -jar $GATK_JAR -R ${gatkref} -D ${dbsnp} -T HaplotypeCaller -stand_call_conf 30 -stand_emit_conf 10.0 -A FisherStrand -A QualByDepth -A VariantType -A DepthPerAlleleBySample -A HaplotypeScore -A AlleleBalance -variant_index_type LINEAR -variant_index_parameter 128000 --emitRefConfidence GVCF -I ${gbam} -o ${pair_id}.gatk.gvcf -nt 1 -nct 8
+  java -Xmx10g -jar \$GATK_JAR -R ${gatkref} -D ${dbsnp} -T HaplotypeCaller -stand_call_conf 30 -stand_emit_conf 10.0 -A FisherStrand -A QualByDepth -A VariantType -A DepthPerAlleleBySample -A HaplotypeScore -A AlleleBalance -variant_index_type LINEAR -variant_index_parameter 128000 --emitRefConfidence GVCF -I ${gbam} -o ${pair_id}.gatk.gvcf -nt 1 -nct 8
   """
 }
 process gatk {
@@ -287,7 +287,7 @@ process gatk {
   script:
   """
   module load gatk/3.5 bedtools/2.25.0 snpeff/4.2 vcftools/0.1.11 
-  java -Xmx16g -jar $GATK_JAR -R ${gatkref} -D ${dbsnp} -T GenotypeGVCFs -o final.gatk.vcf -nt 4 --variant ${(gvcf as List).join(' --variant ')}
+  java -Xmx16g -jar \$GATK_JAR -R ${gatkref} -D ${dbsnp} -T GenotypeGVCFs -o final.gatk.vcf -nt 4 --variant ${(gvcf as List).join(' --variant ')}
   vcf-annotate -n --fill-type final.gatk.vcf | java -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (QD > 2) & (FS <= 60) & (MQ > 40) & (DP >= 10))' |bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > final.gatkpanel.vcf.gz
   """
 }
