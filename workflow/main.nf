@@ -80,10 +80,12 @@ process trimpe {
   set pair_id, file(read1), file(read2) from read_pe
   output:
   set pair_id, file("${read1.baseName.split("\\.fastq")[0]}_val_1.fq.gz"), file("${read2.baseName.split("\\.fastq")[0]}_val_2.fq.gz") into trimpe
+  file("${pair_id}.trimreport.txt") into trimstatpe
   script:
   """
   module load trimgalore/0.4.1 cutadapt/1.9.1
-  trim_galore --paired -q 25 --illumina --gzip --length 35 --no_report_file ${read1} ${read2}
+  trim_galore --paired -q 25 --illumina --gzip --length 35 ${read1} ${read2}
+  perl $baseDir/scripts/parse_trimreport.pl ${pair_id}.trimreport.txt ${read1}_trimming_report.txt ${read2}_trimming_report.txt
   """
 }
 process trimse {
@@ -91,10 +93,12 @@ process trimse {
   set pair_id, file(read1) from read_se
   output:
   set pair_id, file("${read1.baseName.split("\\.fastq.gz")[0]}_trimmed.fq.gz") into trimse
+  file("${pair_id}.trimreport.txt") into trimstatse
   script:
   """
   module load trimgalore/0.4.1 cutadapt/1.9.1
-  trim_galore -q 25 --illumina --gzip --length 35 --no_report_file ${read1}
+  trim_galore -q 25 --illumina --gzip --length 35 ${read1}
+  perl $baseDir/scripts/parse_trimreport.pl ${pair_id}.trimreport.txt ${read1}_trimming_report.txt
   """
 }
 //
@@ -105,7 +109,7 @@ process trimse {
 //
 process alignpe {
 
-  //publishDir $outDir, mode: 'copy'
+  publishDir "$baseDir/output", mode: 'copy'
   cpus 32
 
   input:
@@ -116,7 +120,6 @@ process alignpe {
   file("${pair_id}.bam") into ssidxpe
   file("${pair_id}.discordants.bam") into disbam
   file("${pair_id}.splitters.bam") into splitbam
-
   file("${pair_id}.hist.txt") into insertsize
   when:
   params.pairs == 'pe'
@@ -143,12 +146,12 @@ process alignse {
   params.pairs == 'se'
   script:
   """
-  module load bwa/intel/0.7.15 samtools/intel/1.3 picard/1.127
+  module load bwa/intel/0.7.15 samtools/intel/1.3 picard/1.127 speedseq/20160506
   bwa mem -M -R '@RG\tLB:tx\tPL:illumina\tID:${pair_id}\tPU:barcode\tSM:${pair_id}' -t 30 ${index_path}/${index_name}.fa ${fq1} > output.sam
-  samtools view -b -u -S -o output.unsort.bam output.sam
-  samtools sort -o output.dups.bam output.unsort.bam
-  java -Xmx4g -jar \$PICARD/picard.jar MarkDuplicates INPUT=output.dups.bam REMOVE_DUPLICATES=true VALIDATION_STRINGENCY=LENIENT ASSUME_SORTED=true METRICS_FILE=${pair_id}.dups OUTPUT=${pair_id}.bam
-  samtools index ${pair_id}.bam
+  sambamba view -t 30 -S -o output.unsort.bam output.sam
+  sambamba sort -t 30 -o output.dups.bam output.unsort.bam
+  sambamba markdup -t 30 -r output.dups.bam ${pair_id}.bam
+  sambamba -t 30 index ${pair_id}.bam
   """
 }
 
@@ -168,6 +171,11 @@ Channel
   .mix(ssidxse, ssidxpe)
   .set { ssidx }
 
+Channel
+  .empty()
+  .mix(trimstatse, trimstatpe)
+  .set { trimstat }
+
 //
 // Calculate Metrics of Quality of Alignment
 //
@@ -180,15 +188,19 @@ process seqqc {
   output:
   file("${pair_id}.flagstat.txt") into alignstats
   file("${pair_id}.libcomplex.txt") into libcomplex
+  file("${pair_id}.ontarget.flagstat.txt") into ontarget
   file("${pair_id}.genomecov.txt") into genomecov
   set file("${pair_id}_fastqc.zip"),file("${pair_id}_fastqc.html") into fastqc
   script:
   """
-  module load bedtools/2.25.0 picard/1.127 samtools/intel/1.3 fastqc/0.11.2 
+  module load bedtools/2.25.0 picard/1.127 samtools/intel/1.3 fastqc/0.11.2 speedseq/20160506
   fastqc -f bam ${sbam}
-  samtools flagstat ${sbam} > ${pair_id}.flagstat.txt
-  java -Xmx4g -jar \$PICARD/picard.jar EstimateLibraryComplexity INPUT=${sbam} OUTPUT=${pair_id}.libcomplex.txt
-  bedtools coverage -sorted -hist -g ${btoolsgenome} -b ${sbam} -a ${capture_bed} | grep ^all >  ${pair_id}.genomecov.txt
+  sambamba flagstat -t 30 ${sbam} > ${pair_id}.flagstat.txt
+  sambamba view -t 30 -f bam -F "mapping_quality >= 1" -L  ${capture_bed} -o ${pair_id}.ontarget.bam ${sbam}
+  sambamba flagstat -t 30 ${pair_id}.ontarget.bam > ${pair_id}.ontarget.flagstat.txt
+  bedtools coverage -sorted -hist -g ${btoolsgenome} -b ${pair_id}.ontarget.bam -a ${capture_bed} | grep ^all >  ${pair_id}.genomecov.txt
+  perl $baseDir/scripts/subset_bam.pl ${pair_id}.ontarget.bam ${pair_id}.ontarget.flagstat.txt
+  java -Xmx8g -jar \$PICARD/picard.jar EstimateLibraryComplexity INPUT=${pair_id}.subset50M.bam OUTPUT=${pair_id}.libcomplex.txt
   """
 }
 
@@ -204,12 +216,14 @@ process parse_stat {
   file(lc) from libcomplex.toList()
   file(is) from insertsize.toList()
   file(gc) from genomecov.toList()
-
+  file(on) from ontarget.toList()
+  file(tr) from trimstat.toList()
+  
   output:
   file('sequence.stats.txt')
   script:
   """
-  perl $baseDir/scripts/parse_seqqc.pl *.flagstat.txt
+  perl $baseDir/scripts/parse_seqqc.pl *.libcomplex.txt
   """
 }
 
