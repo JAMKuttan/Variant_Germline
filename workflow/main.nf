@@ -3,6 +3,7 @@
 // Default parameter values to run tests
 params.fastqs="$baseDir/../test_data/*.fastq.gz"
 params.pairs="pe"
+params.nuc="dna"
 params.design="$baseDir/../test_data/design.txt"
 params.genome="/project/shared/bicf_workflow_ref/GRCh38"
 params.capture="$params.genome/gencode.genes.chr.bed"
@@ -271,7 +272,7 @@ process gatkgvcf {
   script:
   """
   module load gatk/3.5 bedtools/2.25.0 snpeff/4.2 vcftools/0.1.11 
-  java -Xmx10g -jar \$GATK_JAR -R ${gatkref} -D ${dbsnp} -T HaplotypeCaller -stand_call_conf 30 -stand_emit_conf 10.0 -A FisherStrand -A QualByDepth -A VariantType -A DepthPerAlleleBySample -A HaplotypeScore -A AlleleBalance -variant_index_type LINEAR -variant_index_parameter 128000 --emitRefConfidence GVCF -I ${gbam} -o ${pair_id}.gatk.gvcf -nt 1 -nct 8
+  java -Xmx16g -jar \$GATK_JAR -R ${gatkref} -D ${dbsnp} -T HaplotypeCaller -stand_call_conf 30 -stand_emit_conf 10.0 -A FisherStrand -A QualByDepth -A VariantType -A DepthPerAlleleBySample -A HaplotypeScore -A AlleleBalance -variant_index_type LINEAR -variant_index_parameter 128000 --emitRefConfidence GVCF -I ${gbam} -o ${pair_id}.gatk.gvcf -nt 1 -nct 8
   """
 }
 process gatk {
