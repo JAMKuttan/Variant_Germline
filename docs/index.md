@@ -6,15 +6,17 @@ This workflow carries out a Germline Exome Analysis pipeline, including the inte
 
     2) Trimmed Fastq files are aligned to the selected reference genome using BWA-MEM (Li et al 2013)
 
-    3) Subsequent processing will be performed by Samtools and Picard to ensure proper file formatting and mark duplicates.
+    3) Subsequent processing will be performed by Sambamba to ensure proper file formatting and mark duplicates.
+
+    4) Data Quality is accessed using FastQC, Alignment Rates using flagstats and Library Complexity using Picard.
  
-    4) Alignments are then recalibrated and realigned using GATK (DePristo et al 2011;McKenna et al 2010)
+    5) Alignments are then recalibrated and realigned using GATK3 (DePristo et al 2011;McKenna et al 2010)
 
-    5) To detect genome germline variants, GATK2 (DePristo et al 2011, McKenna et al 2010), Platypus (Rimmer et al 2014), Samtools version 1.3 and FreeBayes version 0.9.7 (Garrison and Marth 2012) are used. 
+    6) To detect genome germline variants, GATK3 (DePristo et al 2011, McKenna et al 2010), Platypus (Rimmer et al 2014), Samtools version 1.3 and FreeBayes version 0.9.7 (Garrison and Marth 2012) are used. 
 
-    6) Integration of predicted SNPs and INDELs from these algorithms is performed using BAYSIC (Cantarel et al 2014).
+    7) Integration of predicted SNPs and INDELs from these algorithms is performed using BAYSIC (Cantarel et al 2014).
 
-    7) Effect of SNPs and INDELs on genes is predicted using snpEff (Cingolani et al 2012) using the GRCh38.82 database. Allele frequency in the general population is determined by comparison to ExAC (The ExAC Consortium 2015). Additionally, discovered variants are annotated using SnpSift (Cingolani et al 2012) the dbSNP, COSMIC (Forbes et al. 2009), CLINVAR (Landrum et al 2014), GWAS Catalog (Welter et al 2014) and dbNSFP (Liu et al 2011) databases.
+    8) Effect of SNPs and INDELs on genes is predicted using snpEff (Cingolani et al 2012) using the gencode gene annotations. For GRCH38 Only: allele frequency in the general population is determined by comparison to ExAC (The ExAC Consortium 2015). Additionally for this build, discovered variants are annotated using SnpSift (Cingolani et al 2012) using the dbSNP, COSMIC (Forbes et al. 2009), CLINVAR (Landrum et al 2014), GWAS Catalog (Welter et al 2014) and dbNSFP (Liu et al 2011) databases.
 
 ##Workflow Parameters
 

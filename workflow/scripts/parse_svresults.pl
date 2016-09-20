@@ -107,7 +107,7 @@ foreach $events (sort keys %lines) {
     $dgv = join(";",keys %{$dgv{$locus}}) if ($dgv{$locus});
     foreach $sample (sort {$a cmp $b} keys %{$lines{$events}{$locus}}) {
       foreach $genesym (keys %gene_annots) {
-	print OUT join("\t",$events,split(":",$locus),$lines{$events}{$locus}{$sample},
+	print OUT join("\t",'lumpy_'.$events.'_'.$sample,split(":",$locus),$lines{$events}{$locus}{$sample},
 		       $genesym, join(";",keys %{$gene_annots{$genesym}}),$sample,$dgv),"\n";
       }
     }
