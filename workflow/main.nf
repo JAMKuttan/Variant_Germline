@@ -10,7 +10,7 @@ params.capture="$params.genome/PanCancerTargetRegions.hg38.bed"
 dbsnp="$params.genome/dbSnp.vcf.gz"
 indel="$params.genome/GoldIndels.vcf.gz"
 design_file = file(params.design)
-btoolsgenome = file("$params.genome/genomefile.txt")
+
 fastqs=file(params.fastqs)
 knownindel=file(indel)
 gatkref=file("$params.genome/genome.fa")
@@ -175,7 +175,7 @@ process seqqc {
   sambamba flagstat -t 30 ${sbam} > ${pair_id}.flagstat.txt
   sambamba view -t 30 -f bam -F "mapping_quality >= 1" -L  ${capture_bed} -o ${pair_id}.ontarget.bam ${sbam}
   sambamba flagstat -t 30 ${pair_id}.ontarget.bam > ${pair_id}.ontarget.flagstat.txt
-  bedtools coverage -sorted -hist -g ${btoolsgenome} -b ${pair_id}.ontarget.bam -a ${capture_bed} | grep ^all >  ${pair_id}.genomecov.txt
+  bedtools coverage -sorted -hist -g ${index_path}/genomefile.txt -b ${pair_id}.ontarget.bam -a ${capture_bed} | grep ^all >  ${pair_id}.genomecov.txt
   perl $baseDir/scripts/subset_bam.pl ${pair_id}.ontarget.bam ${pair_id}.ontarget.flagstat.txt
   java -Xmx8g -jar \$PICARD/picard.jar EstimateLibraryComplexity INPUT=${pair_id}.subset50M.bam OUTPUT=${pair_id}.libcomplex.txt
   """
@@ -250,11 +250,11 @@ process gatkgvcf {
   input:
   set pair_id,file(gbam),file(gidx) from gatkbam
   output:
-  file("${pair_id}.gatk.gvcf") into gatkgvcf
+  file("${pair_id}.gatk.g.vcf") into gatkgvcf
   script:
   """
   module load gatk/3.5 bedtools/2.25.0 snpeff/4.2 vcftools/0.1.11 
-  java -Xmx10g -jar \$GATK_JAR -R ${gatkref} -D ${dbsnp} -T HaplotypeCaller -stand_call_conf 30 -stand_emit_conf 10.0 -A FisherStrand -A QualByDepth -A VariantType -A DepthPerAlleleBySample -A HaplotypeScore -A AlleleBalance -variant_index_type LINEAR -variant_index_parameter 128000 --emitRefConfidence GVCF -I ${gbam} -o ${pair_id}.g.vcf -nct 2
+  java -Xmx10g -jar \$GATK_JAR -R ${gatkref} -D ${dbsnp} -T HaplotypeCaller -stand_call_conf 30 -stand_emit_conf 10.0 -A FisherStrand -A QualByDepth -A VariantType -A DepthPerAlleleBySample -A HaplotypeScore -A AlleleBalance -variant_index_type LINEAR -variant_index_parameter 128000 --emitRefConfidence GVCF -I ${gbam} -o ${pair_id}.gatk.g.vcf -nct 2
   """
 }
 process gatk {
@@ -290,7 +290,7 @@ process mpileup {
   """
   module load samtools/intel/1.3 bedtools/2.25.0 bcftools/intel/1.3 snpeff/4.2 vcftools/0.1.11
   ls *.bam > final.bam.list
-  cut -f 1 ${index_path}/genomefile.txt | xargs -I {} -n 1 -P 32 sh -c "samtools mpileup -t 'AD,ADF,ADR,INFO/AD,SP' -ug -Q20 -C50 -f ${index_path}/${index_name}.fa -b final.bam.list -r {} | bcftools call --format-fields gq,gp -vmO z -o final.sam.{}.vcf.gz"
+  cut -f 1 ${index_path}/genomefile.chr.txt | xargs -I {} -n 1 -P 32 sh -c "samtools mpileup -t 'AD,ADF,ADR,INFO/AD,SP' -ug -Q20 -C50 -f ${index_path}/${index_name}.fa -b final.bam.list -r {} | bcftools call --format-fields gq,gp -vmO z -o final.sam.{}.vcf.gz"
   vcf-concat final.sam.*.vcf.gz | vcf-sort |vcf-annotate -n --fill-type | java -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (MQ >= 20) & (DP >= 10))' |bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > final.sampanel.vcf.gz
   """
 }
