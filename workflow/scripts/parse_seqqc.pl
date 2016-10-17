@@ -4,7 +4,7 @@
 open OUT, ">sequence.stats.txt" or die $!;
 print OUT join("\t",'Sample','total.raw','total.trimmed','pairs','maprate',
 	       'propair','ontarget','frac.dups','library.size','medinsert',
-	       'avginsert','stdinsert','perc.10x','perc.20x','perc.50x',
+	       'avginsert','stdinsert','avg.depth','median.depth','perc.10x','perc.20x','perc.50x',
 	       'perc.100x','perc.200x','perc.500x'),"\n";
 
 my @statfiles = @ARGV;
@@ -64,7 +64,7 @@ foreach $sfile (@statfiles) {
 		$info{$stats[$i]} = $row[$i];
 	    }
 	    $hash{percdups} = sprintf("%.4f",$info{PERCENT_DUPLICATION});
-	    $hash{libsize} = sprintf("%.4f",$info{ESTIMATED_LIBRARY_SIZE});
+	    $hash{libsize} = $info{ESTIMATED_LIBRARY_SIZE};
 	}
     }
     $hash{medinsert} = 0;
@@ -91,14 +91,25 @@ foreach $sfile (@statfiles) {
     }
     my %cov;
     open COV, "<$prefix\.genomecov.txt" or die $!;
+    my $sumdepth;
+    my $totalbases;
     while (my $line = <COV>) {
       chomp($line);
       my ($all,$depth,$bp,$total,$percent) = split(/\t/,$line);
       $cov{$depth} = $percent;
+      $sumdepth += $depth*$bp;
+      $totalbases = $total if ($depth == 0);
     }
+    my $avgdepth = sprintf("%.0f",$sumdepth/$totalbases);
     my @depths = sort {$a <=> $b} keys %cov;
     my @perc = @cov{@depths};
     my @cum_sum = cumsum(@perc);
+    my $median = 0;
+    foreach my $i (0..$#cum_sum) {
+	if ($cum_sum[$i] < 0.5) {
+	    $median = $i;
+	}
+    }
     $hash{'perc10x'} = 100*sprintf("%.4f",1-$cum_sum[10]);
     $hash{'perc20x'} = 100*sprintf("%.4f",1-$cum_sum[20]);
     $hash{'perc50x'} = 100*sprintf("%.4f",1-$cum_sum[50]);
@@ -107,7 +118,7 @@ foreach $sfile (@statfiles) {
     $hash{'perc500x'} = 100*sprintf("%.4f",1-$cum_sum[500]);
     print OUT join("\t",$prefix,$hash{rawct}, $hash{total},$hash{pairs},$hash{maprate},$hash{propair},
 		   $hash{ontarget},$hash{percdups},$hash{libsize},$hash{medinsert},$hash{avginsert},
-		   $hash{stdinsert},$hash{'perc10x'},$hash{'perc20x'},$hash{'perc50x'},
+		   $hash{stdinsert},$avgdepth,$median,$hash{'perc10x'},$hash{'perc20x'},$hash{'perc50x'},
 		   $hash{'perc100x'},$hash{'perc200x'},$hash{'perc500x'}),"\n";
   }
 

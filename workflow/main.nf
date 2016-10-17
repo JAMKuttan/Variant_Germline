@@ -116,7 +116,7 @@ process alignpe {
   """
   module load speedseq/20160506 picard/1.127
   speedseq align -R '@RG\tLB:tx\tPL:illumina\tID:${pair_id}\tPU:barcode\tSM:${pair_id}' -o ${pair_id} -t 30 ${index_path}/${index_name}.fa ${fq1} ${fq2}
-  java -Xmx4g -jar \$PICARD/picard.jar CollectInsertSizeMetrics INPUT=${pair_id}.bam HISTOGRAM_FILE=${pair_id}.hist.ps REFERENCE_SEQUENCE=${index_path}/${index_name}.fa OUTPUT=${pair_id}.hist.txt
+  java -Xmx32g -jar \$PICARD/picard.jar CollectInsertSizeMetrics INPUT=${pair_id}.bam HISTOGRAM_FILE=${pair_id}.hist.ps REFERENCE_SEQUENCE=${index_path}/${index_name}.fa OUTPUT=${pair_id}.hist.txt
   """
 }
 process alignse {
@@ -177,7 +177,7 @@ process seqqc {
   sambamba flagstat -t 30 ${pair_id}.ontarget.bam > ${pair_id}.ontarget.flagstat.txt
   bedtools coverage -sorted -hist -g ${index_path}/genomefile.txt -b ${pair_id}.ontarget.bam -a ${capture_bed} | grep ^all >  ${pair_id}.genomecov.txt
   perl $baseDir/scripts/subset_bam.pl ${pair_id}.ontarget.bam ${pair_id}.ontarget.flagstat.txt
-  java -Xmx8g -jar \$PICARD/picard.jar EstimateLibraryComplexity INPUT=${pair_id}.subset50M.bam OUTPUT=${pair_id}.libcomplex.txt
+  java -Xmx32g -jar \$PICARD/picard.jar EstimateLibraryComplexity INPUT=${pair_id}.subset50M.bam OUTPUT=${pair_id}.libcomplex.txt
   """
 }
 
@@ -235,10 +235,10 @@ process gatkbam {
   """
   module load gatk/3.5 samtools/intel/1.3
   samtools index ${dbam}
-  java -Xmx4g -jar \$GATK_JAR -T RealignerTargetCreator -known ${knownindel} -R ${gatkref} -o ${pair_id}.bam.list -I ${dbam} -nt 30 -nct 1
-  java -Xmx4g -jar \$GATK_JAR -I ${dbam} -R ${gatkref} --filter_mismatching_base_and_quals -T IndelRealigner -targetIntervals ${pair_id}.bam.list -o ${pair_id}.realigned.bam
-  java -Xmx4g -jar \$GATK_JAR -l INFO -R ${gatkref} --knownSites ${dbsnp} -I ${pair_id}.realigned.bam -T BaseRecalibrator -cov ReadGroupCovariate -cov QualityScoreCovariate -cov CycleCovariate -cov ContextCovariate -o ${pair_id}.recal_data.grp -nt 1 -nct 30
-  java -Xmx4g -jar \$GATK_JAR -T PrintReads -R ${gatkref} -I ${pair_id}.realigned.bam -BQSR ${pair_id}.recal_data.grp -o ${pair_id}.final.bam -nt 1 -nct 8
+  java -Xmx32g -jar \$GATK_JAR -T RealignerTargetCreator -known ${knownindel} -R ${gatkref} -o ${pair_id}.bam.list -I ${dbam} -nt 30 -nct 1
+  java -Xmx32g -jar \$GATK_JAR -I ${dbam} -R ${gatkref} --filter_mismatching_base_and_quals -T IndelRealigner -targetIntervals ${pair_id}.bam.list -o ${pair_id}.realigned.bam
+  java -Xmx32g -jar \$GATK_JAR -l INFO -R ${gatkref} --knownSites ${dbsnp} -I ${pair_id}.realigned.bam -T BaseRecalibrator -cov ReadGroupCovariate -cov QualityScoreCovariate -cov CycleCovariate -cov ContextCovariate -o ${pair_id}.recal_data.grp -nt 1 -nct 30
+  java -Xmx32g -jar \$GATK_JAR -T PrintReads -R ${gatkref} -I ${pair_id}.realigned.bam -BQSR ${pair_id}.recal_data.grp -o ${pair_id}.final.bam -nt 1 -nct 8
   """
 }
 
@@ -254,7 +254,7 @@ process gatkgvcf {
   script:
   """
   module load gatk/3.5 bedtools/2.25.0 snpeff/4.2 vcftools/0.1.11 
-  java -Xmx10g -jar \$GATK_JAR -R ${gatkref} -D ${dbsnp} -T HaplotypeCaller -stand_call_conf 30 -stand_emit_conf 10.0 -A FisherStrand -A QualByDepth -A VariantType -A DepthPerAlleleBySample -A HaplotypeScore -A AlleleBalance -variant_index_type LINEAR -variant_index_parameter 128000 --emitRefConfidence GVCF -I ${gbam} -o ${pair_id}.gatk.g.vcf -nct 2
+  java -Xmx32g -jar \$GATK_JAR -R ${gatkref} -D ${dbsnp} -T HaplotypeCaller -stand_call_conf 30 -stand_emit_conf 10.0 -A FisherStrand -A QualByDepth -A VariantType -A DepthPerAlleleBySample -A HaplotypeScore -A AlleleBalance -variant_index_type LINEAR -variant_index_parameter 128000 --emitRefConfidence GVCF -I ${gbam} -o ${pair_id}.gatk.g.vcf -nct 2
   """
 }
 process gatk {
@@ -270,8 +270,8 @@ process gatk {
   script:
   """
   module load python/2.7.x-anaconda gatk/3.5 bedtools/2.25.0 snpeff/4.2 vcftools/0.1.11
-  java -Xmx16g -jar \$GATK_JAR -R ${gatkref} -D ${dbsnp} -T GenotypeGVCFs -o final.gatk.vcf -nt 4 --variant ${(gvcf as List).join(' --variant ')}
-  java -Xmx16g -jar \$GATK_JAR -R ${gatkref} -T VariantFiltration -V final.gatk.vcf -window 35 -cluster 3 -filterName FS -filter "FS > 30.0" -filterName QD -filter "QD < 2.0" -o final.filtgatk.vcf 
+  java -Xmx32g -jar \$GATK_JAR -R ${gatkref} -D ${dbsnp} -T GenotypeGVCFs -o final.gatk.vcf -nt 4 --variant ${(gvcf as List).join(' --variant ')}
+  java -Xmx32g -jar \$GATK_JAR -R ${gatkref} -T VariantFiltration -V final.gatk.vcf -window 35 -cluster 3 -filterName FS -filter "FS > 30.0" -filterName QD -filter "QD < 2.0" -o final.filtgatk.vcf 
   vcf-annotate -n --fill-type final.filtgatk.vcf | java -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (MQ > 40) & (DP >= 10))' |bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > final.gatkpanel.vcf.gz
   """
 }

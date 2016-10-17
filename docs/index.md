@@ -20,7 +20,7 @@ This workflow carries out a Germline Exome Analysis pipeline, including the inte
 
 ##Workflow Parameters
 
-    fastq - Choose one or more RNASeq read files to process.
+    fastq - Choose one or more FastQ read files to process.
 
     genome - Choose a genomic reference (genome).
 
@@ -33,7 +33,7 @@ This workflow carries out a Germline Exome Analysis pipeline, including the inte
  The following columns are necessary, must be named as in template and can be in any order:
 
     SampleID
-        This ID should match the name in the fastq file ie S0001.R1.fastq.gz the sample ID is S0001
+        This ID is a unique identifier for the sample and will be used to name all of the sample files and act as the same names in the VCF
     SampleName
         This ID can be the identifier of the researcher or clinician
     SubjectID
