@@ -2,7 +2,7 @@
 #uploadqc.pl
 
 open OUT, ">sequence.stats.txt" or die $!;
-print OUT join("\t",'Sample','total.raw','total.trimmed','pairs','maprate',
+print OUT join("\t",'Sample','total.raw','total.unique','pairs','maprate',
 	       'propair','ontarget','frac.dups','library.size','medinsert',
 	       'avginsert','stdinsert','avg.depth','median.depth','perc.10x','perc.20x','perc.50x',
 	       'perc.100x','perc.200x','perc.500x'),"\n";
