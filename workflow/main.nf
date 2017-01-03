@@ -1,6 +1,5 @@
 #!/usr/bin/env nextflow
 
-// Default parameter values to run tests
 params.fastqs="$baseDir/*.fastq.gz"
 params.design="$baseDir/design.txt"
 
@@ -222,7 +221,6 @@ process parse_stat {
 process svcall {
 
   publishDir "$baseDir/output", mode: 'copy'
-  cpus 32
   input:
   set pair_id,file(ssbam),file(discordbam),file(splitters) from svbam
   output:
@@ -245,6 +243,7 @@ process gatkbam {
   output:
   set pair_id,file("${pair_id}.final.bam"),file("${pair_id}.final.bai") into gatkbam
   set pair_id,file("${pair_id}.final.bam"),file("${pair_id}.final.bai") into sambam
+  set pair_id,file("${pair_id}.final.bam"),file("${pair_id}.final.bai") into hsbam
   set pair_id,file("${pair_id}.final.bam"),file("${pair_id}.final.bai") into platbam
   
   script:
@@ -313,7 +312,22 @@ process mpileup {
   java -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (MQ >= 20) & (DP >= 10))' ${pair_id}.sam.vcf.gz |bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > ${pair_id}.sampanel.vcf.gz
   """
 }
+process hotspot {
 
+  publishDir "$baseDir/output", mode: 'copy'
+
+  input:
+  set pair_id,file(gbam),file(gidx) from hsbam
+  output:
+  file("${pair_id}.hotspot.vcf.gz") into hsvcf
+  script:
+  """
+  module load python/2.7.x-anaconda samtools/intel/1.3 bedtools/2.25.0 bcftools/intel/1.3 snpeff/4.2 vcftools/0.1.14
+  samtools mpileup -d 99999 -t INFO/AD -uf $gatkref ${hsbam} > ${pair_id}.mpi
+  bcftools filter -i "AD[1]/DP > 0.01" ${pair_id}.mpi | bcftools filter -i "DP > 50" | bcftools call -m -A > ${pair_id}.lowfreq.vcf
+  java -jar \$SNPEFF_HOME/SnpSift.jar annotate ${index_path}/cosmic.vcf.gz ${pair_id}.lowfreq.vcf | java -jar \$SNPEFF_HOME/SnpSift.jar filter "(CNT[*] >9)" - |bgzip > ${pair_id}.hotspot.vcf.gz
+  """
+}
 process speedseq {
 
   publishDir "$baseDir/output", mode: 'copy'
@@ -361,7 +375,7 @@ process integrate {
   file(ssvcf)from ssvcf.toList()
   file(samvcf) from samvcf.toList()
   file(gvcf) from gatkvcf.toList()
-
+  file(hvcf) from hsvcf.toList()
   output:
   file("*.annot.vcf.gz") into finalvcf
   script:

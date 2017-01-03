@@ -32,7 +32,12 @@ foreach $sid (keys %vcfs) {
     print SH "bgzip $sid\_integrate.bed\n";
     print SH "tabix $sid\_integrate.bed.gz\n";
     print SH "bcftools annotate -a $sid\_integrate.bed.gz --columns CHROM,FROM,TO,CallSet -h $opt{refdir}/CallSet.header $sid\.int.vcf | bgzip > $sid.union.vcf.gz\n";
-    print SH "java -Xmx10g -jar \$SNPEFF_HOME/snpEff.jar -no-intergenic -lof -c \$SNPEFF_HOME/snpEff.config $opt{gver} $sid.union.vcf.gz | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar annotate $opt{refdir}/dbSnp.vcf.gz -  | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar annotate $opt{refdir}/clinvar.vcf.gz - | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar annotate $opt{refdir}/ExAC.vcf.gz - | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar annotate $opt{refdir}/cosmic.vcf.gz - | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar dbnsfp -v -db $opt{refdir}/dbNSFP.txt.gz - | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar gwasCat -db $opt{refdir}/gwas_catalog.tsv - |bgzip > $sid\.annot.vcf.gz\n";
+    if ($opt{refdir} =~ m/GRCh/) {
+	print SH "bcftools annotate -a $opt{refdir}/ExAC.vcf.gz --columns CHROM,POS,AC_POPMAX,AN_POPMAX,POPMAX  $sid.union.vcf.gz | bgzip > $sid.exac.vcf.gz\n";
+	print SH "java -Xmx10g -jar \$SNPEFF_HOME/snpEff.jar -no-intergenic -lof -c \$SNPEFF_HOME/snpEff.config $opt{gver} $sid.exac.vcf.gz | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar annotate $opt{refdir}/dbSnp.vcf.gz -  | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar annotate $opt{refdir}/clinvar.vcf.gz - | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar annotate $opt{refdir}/cosmic.vcf.gz - | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar dbnsfp -v -db $opt{refdir}/dbNSFP.txt.gz - | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar gwasCat -db $opt{refdir}/gwas_catalog.tsv - |bgzip > $sid\.annot.vcf.gz\n";
+    }else {
+	print SH "java -Xmx10g -jar \$SNPEFF_HOME/snpEff.jar -no-intergenic -lof -c \$SNPEFF_HOME/snpEff.config $opt{gver} $sid.union.vcf.gz |bgzip > $sid\.annot.vcf.gz\n";
+    }
     print SH "bcftools stats $sid\.annot.vcf.gz > $sid\.stats.txt\n";
     print SH "plot-vcfstats -s -p $sid\_statplot $sid\.stats.txt\n";
     close SH;
