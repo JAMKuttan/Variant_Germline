@@ -1,7 +1,7 @@
 #!/usr/bin/env nextflow
 
-params.fastqs="$baseDir/*.fastq.gz"
-params.design="$baseDir/design.txt"
+params.fastqs="$baseDir/../test2/*.fastq.gz"
+params.design="$baseDir/../test2/design.fq.txt"
 
 params.genome="/project/shared/bicf_workflow_ref/GRCh38"
 params.capture="$params.genome/MedExome_Plus.bed"
@@ -287,8 +287,8 @@ process gatk {
   """
   module load python/2.7.x-anaconda gatk/3.5 bedtools/2.25.0 snpeff/4.2 vcftools/0.1.14
   java -Xmx32g -jar \$GATK_JAR -R ${gatkref} -D ${dbsnp} -T GenotypeGVCFs -o gatk.vcf -nt 4 --variant ${gvcf}
-   vcf-annotate -n --fill-type gatk.vcf | bcftools norm -c s -f ${gatkref} -w 10 -O z -o ${pair_id}.gatk.vcf.gz
-   tabix ${pair_id}.gatk.vcf.gz
+  vcf-annotate -n --fill-type gatk.vcf | bcftools annotate -x FORMAT/PID,FORMAT/PGT,FORMAT/PL - | bcftools norm -c s -f ${gatkref} -w 10 -O z -o ${pair_id}.gatk.vcf.gz
+  tabix ${pair_id}.gatk.vcf.gz
   java -Xmx32g -jar \$GATK_JAR -R ${gatkref} -T VariantFiltration -V ${pair_id}.gatk.vcf.gz -window 35 -cluster 3 -filterName FS -filter "FS > 30.0" -filterName QD -filter "QD < 2.0" -o ${pair_id}.filtgatk.vcf 
   java -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (MQ > 40) & (DP >= 10))' ${pair_id}.filtgatk.vcf | bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > ${pair_id}.gatkpanel.vcf.gz
   """
@@ -307,7 +307,7 @@ process mpileup {
   script:
   """
   module load python/2.7.x-anaconda samtools/intel/1.3 bedtools/2.25.0 bcftools/intel/1.3 snpeff/4.2 vcftools/0.1.14
-  samtools mpileup -t 'AD,ADF,ADR,INFO/AD,SP' -ug -Q20 -C50 -f ${gatkref} ${gbam} | bcftools call --format-fields gq,gp -vmO z -o ${pair_id}.sam.ori.vcf.gz
+  samtools mpileup -t 'AD,DP,INFO/AD' -ug -Q20 -C50 -f ${gatkref} ${gbam} | bcftools call -vmO z -o ${pair_id}.sam.ori.vcf.gz
   vcf-concat ${pair_id}.sam.ori.vcf.gz | vcf-sort |vcf-annotate -n --fill-type | bcftools norm -c s -f ${gatkref} -w 10 -O z -o ${pair_id}.sam.vcf.gz
   java -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (MQ >= 20) & (DP >= 10))' ${pair_id}.sam.vcf.gz |bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > ${pair_id}.sampanel.vcf.gz
   """
@@ -323,9 +323,9 @@ process hotspot {
   script:
   """
   module load python/2.7.x-anaconda samtools/intel/1.3 bedtools/2.25.0 bcftools/intel/1.3 snpeff/4.2 vcftools/0.1.14
-  samtools mpileup -d 99999 -t INFO/AD -uf $gatkref ${hsbam} > ${pair_id}.mpi
+  samtools mpileup -d 99999 -t 'AD,DP,INFO/AD' -uf $gatkref ${hsbam} > ${pair_id}.mpi
   bcftools filter -i "AD[1]/DP > 0.01" ${pair_id}.mpi | bcftools filter -i "DP > 50" | bcftools call -m -A > ${pair_id}.lowfreq.vcf
-  java -jar \$SNPEFF_HOME/SnpSift.jar annotate ${index_path}/cosmic.vcf.gz ${pair_id}.lowfreq.vcf | java -jar \$SNPEFF_HOME/SnpSift.jar filter "(CNT[*] >9)" - |bgzip > ${pair_id}.hotspot.vcf.gz
+  java -jar \$SNPEFF_HOME/SnpSift.jar annotate ${index_path}/cosmic.vcf.gz ${pair_id}.lowfreq.vcf | java -jar \$SNPEFF_HOME/SnpSift.jar filter "(CNT[*] >2)" - |bgzip > ${pair_id}.hotspot.vcf.gz
   """
 }
 process speedseq {
@@ -342,7 +342,7 @@ process speedseq {
   """
   module load python/2.7.x-anaconda samtools/intel/1.3 bedtools/2.25.0 bcftools/intel/1.3 snpeff/4.2 speedseq/20160506 vcftools/0.1.14
   speedseq var -t \$SLURM_CPUS_ON_NODE -o ssvar ${gatkref} ${gbam}
-  vcf-annotate -n --fill-type ssvar.vcf.gz | bcftools norm -c s -f ${gatkref} -w 10 -O z -o ${pair_id}.ssvar.vcf.gz
+  vcf-annotate -n --fill-type ssvar.vcf.gz | bcftools annotate -x FORMAT/QA,FORMAT/QR,FORMAT/GL - | bcftools norm -c s -f ${gatkref} -w 10 -O z -o ${pair_id}.fb.vcf.gz
   java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (DP >= 10))' ${pair_id}.ssvar.vcf.gz |bedtools intersect -header -a stdin -b ${capture_bed} | bgzip > ${pair_id}.sspanel.vcf.gz
   """
 }
@@ -362,27 +362,79 @@ process platypus {
   """
   module load python/2.7.x-anaconda bedtools/2.25.0 snpeff/4.2 platypus/gcc/0.8.1 bcftools/intel/1.3 samtools/intel/1.3 vcftools/0.1.14
   Platypus.py callVariants --minMapQual=10 --mergeClusteredVariants=1 --nCPU=30 --bamFiles=${gbam} --refFile=${gatkref} --output=platypus.vcf
-  vcf-annotate -n --fill-type -n platypus.vcf  | vcf-sort | bcftools norm -c s -f ${gatkref} -w 10 -O z -o ${pair_id}.platypus.vcf.gz
+  vcf-annotate -n --fill-type -n platypus.vcf  | vcf-sort | bcftools annotate -O v -x FORMAT/GL,FORMAT/GOF,FORMAT/GQ -|perl -p -e 's/ID=NR/ID=RO/g' | perl -p -e 's/NR:NV/RO:AO/' | perl -p -e 's/ID=NV/ID=AO/' | bcftools norm -c s -f ${gatkref} -w 10 -O z -o ${pair_id}.platypus.vcf.gz
   java -jar \$SNPEFF_HOME/SnpSift.jar filter "((QUAL >= 10) & (QD > 2) & (FILTER = 'PASS'))" ${pair_id}.platypus.vcf.gz | bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > ${pair_id}.platpanel.vcf.gz
   """
 }
+
+ssvcf .phase(gatkvcf)
+      .map {p,q -> [p[0],p[1],q[1]]}
+      .set { twovcf }
+twovcf .phase(samvcf)
+      .map {p,q -> [p[0],p[1],p[2],q[1]]}
+      .set { threevcf }
+threevcf .phase(platvcf)
+      .map {p,q -> [p[0],p[1],p[2],p[3],q[1]]}
+      .set { fourvcf }
+fourvcf .phase(hsvcf)
+	.map {p,q -> [p[0],p[1],p[2],p[3],p[4],q[1]]}
+      	.set { vcflist }
 
 process integrate {
   publishDir "$baseDir/output", mode: 'copy'
 
   input:
-  file(pvcf) from platvcf.toList()
-  file(ssvcf)from ssvcf.toList()
-  file(samvcf) from samvcf.toList()
-  file(gvcf) from gatkvcf.toList()
-  file(hvcf) from hsvcf.toList()
+  set fname,file(ss),file(gatk),file(sam),file(plat),file(hs) from vcflist
+  
   output:
-  file("*.annot.vcf.gz") into finalvcf
+  set fname,file("${fname}.union.vcf.gz") into union
   script:
   """
-  module load python/2.7.x-anaconda bedtools/2.25.0 snpeff/4.2 platypus/gcc/0.8.1  bcftools/intel/1.3 samtools/intel/1.3 jags/4.2.0
+  module load gatk/3.5 python/2.7.x-anaconda bedtools/2.25.0 snpeff/4.2 bcftools/intel/1.3 samtools/intel/1.3
   module load vcftools/0.1.14
-  perl $baseDir/scripts/integration_vcf_snpindel_highcov.pl -f ${gatkref} -b ${capture_bed} -r ${index_path} -g ${snpeff_vers}
-  ls *_integrate.sh | xargs -I {} -n 1 -P \$SLURM_CPUS_ON_NODE sh -c "sh {}"  
-  """		    
+  
+  java -Xmx32g -jar \$GATK_JAR -R ${reffa} -T CombineVariants --variant:gatk ${gatk} --variant:sam ${sam} --variant:freebayes ${ss} --variant:plat ${plat} --variant:cosmic ${hs} -genotypeMergeOptions PRIORITIZE -priority gatk,sam,ss,plat,cosmic -o ${fname}.int.vcf
+  bedtools multiinter -i ${gatk} ${sam} ${ss} ${plat} ${hs} -names gatk mpileup freebayes platypus hotspot |cut -f 1,2,3,5 | bedtools sort -i stdin | bedtools merge -c 4 -o distinct >  ${fname}_integrate.bed
+  bgzip ${fname}_integrate.bed
+  tabix ${fname}_integrate.bed.gz
+  bcftools annotate -a ${fname}_integrate.bed.gz --columns CHROM,FROM,TO,CallSet -h ${index_path}/CallSet.header ${fname}.int.vcf | bgzip > ${fname}.union.vcf.gz
+  """
+}
+
+process annot {
+  publishDir "$baseDir/output", mode: 'copy'
+
+  input:
+  set fname,unionvcf from union
+  
+  output:
+  file("${fname}.annot.vcf.gz") into annotvcf
+  file("${fname}.stats.txt") into stats
+  file("${fname}.statplot*") into plotstats
+
+  script:
+  if (params.genome == '/project/shared/bicf_workflow_ref/GRCh38')
+  """
+  module load python/2.7.x-anaconda bedtools/2.25.0 snpeff/4.2 bcftools/intel/1.3 samtools/intel/1.3
+  tabix ${unionvcf}
+  bcftools annotate -Oz -a ${index_path}/ExAC.vcf.gz -o ${fname}.exac.vcf.gz --columns CHROM,POS,AC_Het,AC_Hom,AC_Hemi,AC_Adj,AN_Adj,AC_POPMAX,AN_POPMAX,POPMAX ${unionvcf}
+  tabix ${fname}.exac.vcf.gz 
+  bcftools annotate -Oz -a ${index_path}/dbSnp.vcf.gz -o ${fname}.dbsnp.vcf.gz --columns CHROM,POS,ID,RS ${fname}.exac.vcf.gz
+  tabix ${fname}.dbsnp.vcf.gz
+  bcftools annotate -Oz -a ${index_path}/clinvar.vcf.gz -o ${fname}.clinvar.vcf.gz --columns CHROM,POS,CLNSIG,CLNDSDB,CLNDSDBID,CLNDBN,CLNREVSTAT,CLNACC ${fname}.dbsnp.vcf.gz
+  tabix ${fname}.clinvar.vcf.gz
+  bcftools annotate -Oz -a ${index_path}/cosmic.vcf.gz -o ${fname}.bcfannot.vcf.gz --columns  CHROM,POS,ID,CNT ${fname}.clinvar.vcf.gz
+  java -Xmx10g -jar \$SNPEFF_HOME/snpEff.jar -no-intergenic -lof -c \$SNPEFF_HOME/snpEff.config ${snpeff_vers} ${fname}.bcfannot.vcf.gz | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar dbnsfp -v -db ${index_path}/dbNSFP.txt.gz - | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar gwasCat -db ${index_path}/gwas_catalog.tsv - |bgzip > ${fname}.annot.vcf.gz
+  tabix ${fname}.annot.vcf.gz
+  bcftools stats ${fname}.annot.vcf.gz > ${fname}.stats.txt
+  plot-vcfstats -s -p ${fname}.statplot ${fname}.stats.txt
+  """
+  else
+  """
+  module load snpeff/4.2
+  java -Xmx10g -jar \$SNPEFF_HOME/snpEff.jar -no-intergenic -lof -c \$SNPEFF_HOME/snpEff.config ${snpeff_vers} ${unionvcf} |bgzip > ${fname}.annot.vcf.gz
+  tabix ${fname}.annot.vcf.gz
+  bcftools stats ${fname}.annot.vcf.gz > ${fname}.stats.txt
+  plot-vcfstats -s -p ${fname}.statplot ${fname}.stats.txt
+  """
 }

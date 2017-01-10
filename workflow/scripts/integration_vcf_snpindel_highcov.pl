@@ -28,7 +28,7 @@ foreach $sid (keys %vcfs) {
     print SH "tabix ",$vcfs{$sid}{ssvar},"\n";
     print SH "tabix ",$vcfs{$sid}{hotspot},"\n";
     print SH "java -Xmx32g -jar \$GATK_JAR -R $fasta -T CombineVariants --variant:gatk ".$vcfs{$sid}{gatk}." --variant:mpileup ".$vcfs{$sid}{sam}." --variant:samhotspot ".$vcfs{$sid}{hotspot}." --variant:freebayes ".$vcfs{$sid}{ssvar}." --variant:platypus ".$vcfs{$sid}{platypus}." -genotypeMergeOptions PRIORITIZE -priority mpileup,gatk,freebayes,platypus,samhotspot -o $sid\.int.vcf\n";
-    print SH "bedtools multiinter -i ".join(" ",$vcfs{$sid}{gatk},$vcfs{$sid}{sam},$vcfs{$sid}{ssvar},$vcfs{$sid}{platypus},$vcfs{$sid}{hotspot})." -names gatk sam ssvar platypus hotspot |cut -f 1,2,3,5 | bedtools sort -i stdin >  $sid\_integrate.bed\n";
+    print SH "bedtools multiinter -i ".join(" ",$vcfs{$sid}{gatk},$vcfs{$sid}{sam},$vcfs{$sid}{ssvar},$vcfs{$sid}{platypus},$vcfs{$sid}{hotspot})." -names gatk sam ssvar platypus hotspot |cut -f 1,2,3,5 | bedtools sort -i stdin | bedtools merge -c 4 -o distinct >  $sid\_integrate.bed\n";
     print SH "bgzip $sid\_integrate.bed\n";
     print SH "tabix $sid\_integrate.bed.gz\n";
     print SH "bcftools annotate -a $sid\_integrate.bed.gz --columns CHROM,FROM,TO,CallSet -h $opt{refdir}/CallSet.header $sid\.int.vcf | bgzip > $sid.union.vcf.gz\n";
