@@ -224,7 +224,8 @@ process svcall {
   input:
   set pair_id,file(ssbam),file(discordbam),file(splitters) from svbam
   output:
-  
+  set pair_id,file("${pair_id}.sssv.sv.vcf.gz") into svvcf
+  set pair_id,file("${pair_id}.sssv.sv.vcf.gz.annot.txt") into svannot
   script:
   """
   module load samtools/intel/1.3 bedtools/2.25.0 bcftools/intel/1.3 snpeff/4.2 speedseq/20160506 vcftools/0.1.14
@@ -282,7 +283,7 @@ process gatk {
 
   output:
   file("${pair_id}.gatkpanel.vcf.gz") into gatkfilt
-  file("${pair_id}.gatk.vcf.gz") into gatkvcf
+  set pair_id,file("${pair_id}.gatk.vcf.gz") into gatkvcf
   script:
   """
   module load python/2.7.x-anaconda gatk/3.5 bedtools/2.25.0 snpeff/4.2 vcftools/0.1.14
@@ -303,7 +304,7 @@ process mpileup {
   set pair_id,file(gbam),file(gidx) from sambam
   output:
   file("${pair_id}.sampanel.vcf.gz") into samfilt
-  file("${pair_id}.sam.vcf.gz") into samvcf
+  set pair_id,file("${pair_id}.sam.vcf.gz") into samvcf
   script:
   """
   module load python/2.7.x-anaconda samtools/intel/1.3 bedtools/2.25.0 bcftools/intel/1.3 snpeff/4.2 vcftools/0.1.14
@@ -319,13 +320,13 @@ process hotspot {
   input:
   set pair_id,file(gbam),file(gidx) from hsbam
   output:
-  file("${pair_id}.hotspot.vcf.gz") into hsvcf
+  set pair_id,file("${pair_id}.hotspot.vcf.gz") into hsvcf
   script:
   """
   module load python/2.7.x-anaconda samtools/intel/1.3 bedtools/2.25.0 bcftools/intel/1.3 snpeff/4.2 vcftools/0.1.14
   samtools mpileup -d 99999 -t 'AD,DP,INFO/AD' -uf ${gatkref} ${gbam} > ${pair_id}.mpi
   bcftools filter -i "AD[1]/DP > 0.01" ${pair_id}.mpi | bcftools filter -i "DP > 50" | bcftools call -m -A |vcf-annotate -n --fill-type |  bcftools norm -c s -f /project/shared/bicf_workflow_ref/GRCh38/genome.fa -w 10 -O z -o ${pair_id}.lowfreq.vcf.gz -
-  java -jar \$SNPEFF_HOME/SnpSift.jar annotate ${index_path}/cosmic.vcf.gz ${pair_id}.lowfreq.vcf.gz | java -jar \$SNPEFF_HOME/SnpSift.jar filter "(CNT[*] >1)" - |bgzip > ${pair_id}.hotspot.vcf.gz
+  java -jar \$SNPEFF_HOME/SnpSift.jar annotate ${index_path}/cosmic.vcf.gz ${pair_id}.lowfreq.vcf.gz | java -jar \$SNPEFF_HOME/SnpSift.jar filter "(CNT[*] >0)" - |bgzip > ${pair_id}.hotspot.vcf.gz
   """
 }
 process speedseq {
@@ -336,7 +337,7 @@ process speedseq {
   set pair_id,file(gbam),file(gidx) from ssbam
   output:
   file("${pair_id}.sspanel.vcf.gz") into ssfilt
-  file("${pair_id}.ssvar.vcf.gz") into ssvcf
+  set pair_id,file("${pair_id}.ssvar.vcf.gz") into ssvcf
 
   script:
   """
@@ -356,7 +357,7 @@ process platypus {
 
   output:
   file("${pair_id}.platpanel.vcf.gz") into platfilt
-  file("${pair_id}.platypus.vcf.gz") into platvcf
+  set pair_id,file("${pair_id}.platypus.vcf.gz") into platvcf
 
   script:
   """
@@ -394,7 +395,6 @@ process integrate {
   """
   module load gatk/3.5 python/2.7.x-anaconda bedtools/2.25.0 snpeff/4.2 bcftools/intel/1.3 samtools/intel/1.3
   module load vcftools/0.1.14
-  #java -Xmx32g -jar \$GATK_JAR -R ${reffa} -T CombineVariants --variant:gatk ${gatk} --variant:sam ${sam} --variant:freebayes ${ss} --variant:plat ${plat} --variant:cosmic ${hs} -genotypeMergeOptions PRIORITIZE -priority gatk,sam,ss,plat,cosmic -o ${fname}.int.vcf
   bedtools multiinter -i ${gatk} ${sam} ${ss} ${plat} ${hs} -names gatk sam ssvar platypus hotspot |cut -f 1,2,3,5 | bedtools sort -i stdin | bedtools merge -c 4 -o distinct >  ${fname}_integrate.bed
   perl $baseDir/scripts/combine_variants.pl ${fname}
   bgzip ${fname}_integrate.bed
