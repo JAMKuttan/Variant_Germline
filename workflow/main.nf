@@ -1,11 +1,12 @@
 #!/usr/bin/env nextflow
 
 params.fastqs="$baseDir/../test2/*.fastq.gz"
-params.design="$baseDir/../test2/design.fq.txt"
+params.design="$baseDir/../test2/design.txt"
 
 params.genome="/project/shared/bicf_workflow_ref/GRCh38"
-params.capture="$params.genome/MedExome_Plus.bed"
+params.capture="$params.genome/UTSWV2.bed"
 params.pairs="pe"
+params.cancer="detect"
 
 dbsnp="$params.genome/dbSnp.vcf.gz"
 indel="$params.genome/GoldIndels.vcf.gz"
@@ -55,7 +56,9 @@ new File(params.design).withReader { reader ->
 } 
 }
 
-if( ! prefix) { error "Didn't match any input files with entries in the design file" }
+if( ! prefix) {
+error "Didn't match any input files with entries in the design file"
+}
 
 if (params.pairs == 'pe') {
 Channel
@@ -181,6 +184,7 @@ process seqqc {
   set pair_id, file("${pair_id}.ontarget.bam"),file("${pair_id}.ontarget.bam.bai") into ssbam
   file("${pair_id}.ontarget.bam.bai") into ssidx
   file("${pair_id}.genomecov.txt") into genomecov
+  file("${pair_id}.mapqualcov.txt") into mapqualcov
   set file("${pair_id}_fastqc.zip"),file("${pair_id}_fastqc.html") into fastqc
 
   script:
@@ -191,6 +195,7 @@ process seqqc {
   sambamba view -t 30 -f bam -L  ${capture_bed} -o ${pair_id}.ontarget.bam ${sbam}
   sambamba flagstat -t 30 ${pair_id}.ontarget.bam > ${pair_id}.ontarget.flagstat.txt
   bedtools coverage -sorted -hist -g ${index_path}/genomefile.txt -b ${pair_id}.ontarget.bam -a ${capture_bed} | grep ^all >  ${pair_id}.genomecov.txt
+  samtools view -b -q 1 ${pair_id}.ontarget.bam | bedtools coverage -sorted -hist -g ${index_path}/genomefile.txt -b stdin -a ${capture_bed}  >  ${pair_id}.mapqualcov.txt
   perl $baseDir/scripts/subset_bam.pl ${pair_id}.ontarget.bam ${pair_id}.ontarget.flagstat.txt ${capture_bed}
   java -Xmx8g -jar \$PICARD/picard.jar EstimateLibraryComplexity INPUT=${pair_id}.subset.bam OUTPUT=${pair_id}.libcomplex.txt
   """
@@ -207,6 +212,7 @@ process parse_stat {
   file(gc) from genomecov.toList()
   file(on) from ontarget.toList()
   file(tr) from trimstat.toList()
+  file(mq) from mapqualcov.toList()
   
   output:
   file('sequence.stats.txt')
@@ -214,6 +220,7 @@ process parse_stat {
   script:
   """
   perl $baseDir/scripts/parse_seqqc.pl *.libcomplex.txt
+  perl $baseDir/scripts/covstats.pl *.mapqualcov.txt
   Rscript $baseDir/scripts/plot_hist_genocov.R
   """
 }
@@ -288,7 +295,7 @@ process gatk {
   """
   module load python/2.7.x-anaconda gatk/3.5 bedtools/2.25.0 snpeff/4.2 vcftools/0.1.14
   java -Xmx32g -jar \$GATK_JAR -R ${gatkref} -D ${dbsnp} -T GenotypeGVCFs -o gatk.vcf -nt 4 --variant ${gvcf}
- bcftools annotate -x FORMAT/PID,FORMAT/PGT,FORMAT/PL gatk.vcf | vcf-annotate -n --fill-type | bcftools norm -c s -f ${gatkref} -w 10 -O z -o ${pair_id}.gatk.vcf.gz -
+  vcf-annotate -n --fill-type gatk.vcf | bcftools norm -c s -f ${gatkref} -w 10 -O z -o ${pair_id}.gatk.vcf.gz -
   tabix ${pair_id}.gatk.vcf.gz
   java -Xmx32g -jar \$GATK_JAR -R ${gatkref} -T VariantFiltration -V ${pair_id}.gatk.vcf.gz -window 35 -cluster 3 -filterName FS -filter "FS > 30.0" -filterName QD -filter "QD < 2.0" -o ${pair_id}.filtgatk.vcf 
   java -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (MQ > 40) & (DP >= 10))' ${pair_id}.filtgatk.vcf | bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > ${pair_id}.gatkpanel.vcf.gz
@@ -321,6 +328,8 @@ process hotspot {
   set pair_id,file(gbam),file(gidx) from hsbam
   output:
   set pair_id,file("${pair_id}.hotspot.vcf.gz") into hsvcf
+//  when:
+//  params.cancer == "detect"
   script:
   """
   module load python/2.7.x-anaconda samtools/intel/1.3 bedtools/2.25.0 bcftools/intel/1.3 snpeff/4.2 vcftools/0.1.14
@@ -343,7 +352,7 @@ process speedseq {
   """
   module load python/2.7.x-anaconda samtools/intel/1.3 bedtools/2.25.0 bcftools/intel/1.3 snpeff/4.2 speedseq/20160506 vcftools/0.1.14
   speedseq var -t \$SLURM_CPUS_ON_NODE -o ssvar ${gatkref} ${gbam}
-  bcftools annotate -x FORMAT/QA,FORMAT/QR,FORMAT/GL ssvar.vcf.gz | vcf-annotate -n --fill-type | bcftools norm -c s -f ${gatkref} -w 10 -O z -o ${pair_id}.ssvar.vcf.gz -
+  vcf-annotate -n --fill-type ssvar.vcf.gz| bcftools norm -c s -f ${gatkref} -w 10 -O z -o ${pair_id}.ssvar.vcf.gz -
   java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (DP >= 10))' ${pair_id}.ssvar.vcf.gz |bedtools intersect -header -a stdin -b ${capture_bed} | bgzip > ${pair_id}.sspanel.vcf.gz
   """
 }
@@ -365,7 +374,7 @@ process platypus {
   Platypus.py callVariants --minMapQual=10 --mergeClusteredVariants=1 --nCPU=30 --bamFiles=${gbam} --refFile=${gatkref} --output=platypus.vcf
   bgzip platypus.vcf
   tabix platypus.vcf.gz
-  bcftools annotate -O v -x FORMAT/GL,FORMAT/GOF,FORMAT/GQ platypus.vcf.gz  | vcf-sort | vcf-annotate -n --fill-type -n |perl -p -e 's/##FORMAT=<ID=NR/##FORMAT=<ID=RO/g' | perl -p -e 's/NR:NV/RO:AO/' | perl -p -e 's/##FORMAT=<ID=NV/##FORMAT=<ID=AO/' | bcftools norm -c s -f ${gatkref} -w 10 -O z -o ${pair_id}.platypus.vcf.gz -
+  vcf-sort platypus.vcf.gz| vcf-annotate -n --fill-type -n | bcftools norm -c s -f ${gatkref} -w 10 -O z -o ${pair_id}.platypus.vcf.gz -
   java -jar \$SNPEFF_HOME/SnpSift.jar filter "((QUAL >= 10) & (QD > 2) & (FILTER = 'PASS'))" ${pair_id}.platypus.vcf.gz | bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > ${pair_id}.platpanel.vcf.gz
   """
 }
@@ -379,9 +388,16 @@ twovcf .phase(samvcf)
 threevcf .phase(platvcf)
       .map {p,q -> [p[0],p[1],p[2],p[3],q[1]]}
       .set { fourvcf }
-fourvcf .phase(hsvcf)
-	.map {p,q -> [p[0],p[1],p[2],p[3],p[4],q[1]]}
+if (params.cancer == "detect") {
+  fourvcf .phase(hsvcf)
+  	.map {p,q -> [p[0],p[1],p[2],p[3],p[4],q[1]]}
       	.set { vcflist }
+}
+else {
+  Channel
+	.from(fourvcf)
+  	.into {vcflist}
+}
 
 process integrate {
   publishDir "$baseDir/output", mode: 'copy'
@@ -392,14 +408,36 @@ process integrate {
   output:
   set fname,file("${fname}.union.vcf.gz") into union
   script:
+  if (params.cancer == "detect")
+  """
+  module load gatk/3.5 python/2.7.x-anaconda bedtools/2.25.0 snpeff/4.2 bcftools/intel/1.3 samtools/intel/1.3 vcftools/0.1.14
+  bedtools multiinter -i ${gatk} ${sam} ${ss} ${plat} ${hs} -names gatk sam ssvar platypus hotspot |cut -f 1,2,3,5 | bedtools sort -i stdin | bedtools merge -c 4 -o distinct >  ${fname}_integrate.bed
+  bedtools intersect -header -v -a ${hs} -b ${sam} |bedtools intersect -header -v -a stdin -b ${gatk} | bedtools intersect -header -v -a stdin -b ${ss} |  bedtools intersect -header -v -a stdin -b ${plat} | bgzip > ${fname}.hotspot.nooverlap.vcf.gz
+  tabix ${fname}.hotspot.nooverlap.vcf.gz
+  tabix ${gatk}
+  tabix ${sam}
+  tabix ${ss}
+  tabix ${plat}
+  java -Xmx32g -jar \$GATK_JAR -R ${gatkref} -T CombineVariants --filteredrecordsmergetype KEEP_UNCONDITIONAL --variant:gatk ${gatk} --variant:sam ${sam} --variant:ssvar ${ss} --variant:platypus ${plat} --variant:hotspot ${fname}.hotspot.nooverlap.vcf.gz -genotypeMergeOptions PRIORITIZE -priority sam,ssvar,gatk,platypus,hotspot -o ${fname}.int.vcf
+  perl -d $baseDir/scripts/uniform_integrated_vcf.pl ${fname}.int.vcf
+  bgzip ${fname}_integrate.bed
+  tabix ${fname}_integrate.bed.gz
+  bgzip ${fname}.uniform.vcf
+  tabix ${fname}.uniform.vcf.gz
+  bcftools annotate -a ${fname}_integrate.bed.gz --columns CHROM,FROM,TO,CallSet -h ${index_path}/CallSet.header ${fname}.uniform.vcf.gz | bgzip > ${fname}.union.vcf.gz
+  """
+  else
   """
   module load gatk/3.5 python/2.7.x-anaconda bedtools/2.25.0 snpeff/4.2 bcftools/intel/1.3 samtools/intel/1.3
   module load vcftools/0.1.14
-  bedtools multiinter -i ${gatk} ${sam} ${ss} ${plat} ${hs} -names gatk sam ssvar platypus hotspot |cut -f 1,2,3,5 | bedtools sort -i stdin | bedtools merge -c 4 -o distinct >  ${fname}_integrate.bed
-  perl $baseDir/scripts/combine_variants.pl ${fname}
+  bedtools multiinter -i ${gatk} ${sam} ${ss} ${plat} -names gatk sam ssvar platypus |cut -f 1,2,3,5 | bedtools sort -i stdin | bedtools merge -c 4 -o distinct >  ${fname}_integrate.bed
+  java -Xmx32g -jar \$GATK_JAR -R ${gatkref} -T CombineVariants --filteredrecordsmergetype KEEP_UNCONDITIONAL -genotypeMergeOptions PRIORITIZE --variant:gatk ${gatk} --variant:sam ${sam} --variant:ssvar ${ss} --variant:platypus ${plat} -priority sam,ssvar,gatk,platypus -o ${fname}.int.vcf
+  perl -d $baseDir/scripts/uniform_integrated_vcf.pl ${fname}.int.vcf
   bgzip ${fname}_integrate.bed
   tabix ${fname}_integrate.bed.gz
-  bcftools annotate -a ${fname}_integrate.bed.gz --columns CHROM,FROM,TO,CallSet -h ${index_path}/CallSet.header ${fname}.int.vcf | bgzip > ${fname}.union.vcf.gz
+  bgzip ${fname}.uniform.vcf
+  tabix ${fname}.uniform.vcf.gz
+  bcftools annotate -a ${fname}_integrate.bed.gz --columns CHROM,FROM,TO,CallSet -h ${index_path}/CallSet.header ${fname}.uniform.vcf.gz | bgzip > ${fname}.union.vcf.gz
   """
 }
 
