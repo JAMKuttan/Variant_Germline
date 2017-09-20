@@ -1,5 +1,5 @@
-print(files <- list.files(path='.',pattern="genomecov.txt$"))
-print(labs <- gsub(".genomecov.txt", "", files, perl=TRUE))
+print(files <- list.files(path='.',pattern="totgenomecov.txt$"))
+print(labs <- gsub(".totgenomecov.txt", "", files, perl=TRUE))
 i <- 1
 
 cov <- list()
