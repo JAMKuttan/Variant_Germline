@@ -49,7 +49,7 @@ This workflow package provides the following key output files:
 
 ## File Format For Design File
 
-[https://cloud.biohpc.swmed.edu/index.php/s/fpWTgU5UikzUldb](See Workflow Template Design Files)
+[See Workflow Template Design Files](https://cloud.biohpc.swmed.edu/index.php/s/fpWTgU5UikzUldb)
 
 The following columns are necessary, must be named as in template and can be in any order:
 
