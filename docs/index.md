@@ -33,7 +33,7 @@ This workflow package provides the following key output files:
 5. Mutation Allele Frequency (MAF) > 0.15
 6. If novel: Called by 2+ callers
 
-##Workflow Parameters
+## Workflow Parameters
 
 1. fastq
    a. Choose one or more FastQ read files to process.
@@ -47,7 +47,7 @@ This workflow package provides the following key output files:
 5. design
    This file matches the fastq files to data about the sample
 
-##File Format For Design File
+## File Format For Design File
 
 [https://cloud.biohpc.swmed.edu/index.php/s/fpWTgU5UikzUldb](See Workflow Template Design Files)
 
