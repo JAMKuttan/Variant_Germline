@@ -42,8 +42,8 @@ new File(params.design).withReader { reader ->
     def hline = reader.readLine()
     def header = hline.split("\t")
     prefixidx = header.findIndexOf{it == 'SampleID'};
-    oneidx = header.findIndexOf{it == 'FullPathToFqR1'};
-    twoidx = header.findIndexOf{it == 'FullPathToFqR2'};
+    oneidx = header.findIndexOf{it == 'FqR1'};
+    twoidx = header.findIndexOf{it == 'FqR2'};
     if (twoidx == -1) {
        twoidx = oneidx
        }      

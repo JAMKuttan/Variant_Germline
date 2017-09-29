@@ -63,9 +63,9 @@ The following columns are necessary, must be named as in template and can be in 
 	2= Case or Diseaes Phenotype, 1= Healthy Control
     Gender
 	1=male, 2=female
-    FullPathToFqR1
+    FqR1
 	Name of the fastq file R1
-    FullPathToFqR2
+    FqR2
 	Name of the fastq file R2
 
 There are some optional columns that might help with the analysis:
