@@ -33,7 +33,7 @@ This workflow package provides the following key output files:
 5. Mutation Allele Frequency (MAF) > 0.15
 6. If novel: Called by 2+ callers
 
-##Workflow Parameters
+## Workflow Parameters
 
 1. fastq
    a. Choose one or more FastQ read files to process.
@@ -47,7 +47,7 @@ This workflow package provides the following key output files:
 5. design
    This file matches the fastq files to data about the sample
 
-##File Format For Design File
+## File Format For Design File
 
 [See Workflow Template Design Files](https://cloud.biohpc.swmed.edu/index.php/s/fpWTgU5UikzUldb)
 
@@ -56,27 +56,16 @@ The following columns are necessary, must be named as in template and can be in 
     SampleID
         This ID is a unique identifier for the sample and will be used to name all of the sample files and act as the same names in the VCF
     FqR1
-	Name of the fastq file R1
+    	Name of the fastq file R1
     FqR2
-	Name of the fastq file R2
+    	Name of the fastq file R2
 
-There are some optional columns that might help with the analysis:
-      SequenceRun
-      Organism
-      FamilyID
-      CellPopulation
-      Treatment
-      GeneticFeature (WT or KO)
-      Race
-      Ethnicity
-      Age
-      
 
 ## Test Data
 [Available with BioHPC Account](https://lamella.biohpc.swmed.edu/index.php/s/rJYLrm96VGg7DsR)
 
 ## Credits
-This example worklow is derived from original scripts kindly contributed by the Bioinformatic Core Facility (BICF), Department of Bioinformatics and Clinical Sciences.
+[BICF](http://www.utsouthwestern.edu/labs/bioinformatics/)
 
 ## References
 1.	Andy Rimmer, Hang Phan, Iain Mathieson, Zamin Iqbal, Stephen R. F. Twigg, WGS500 Consortium, Andrew O. M. Wilkie, Gil McVean, Gerton Lunter. Integrating mapping-, assembly- and haplotype-based approaches for calling variants in clinical sequencing applications. Nature Genetics (2014) doi:10.1038/ng.3036
