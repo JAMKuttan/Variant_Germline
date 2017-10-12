@@ -1,7 +1,8 @@
 #!/usr/bin/env nextflow
 
-params.fastqs="$baseDir/../test2/*.fastq.gz"
-params.design="$baseDir/../test2/design.txt"
+params.input = "$baseDir"
+params.fastqs="$params.input/*.fastq.gz"
+params.design="$params.input/design.txt"
 
 params.genome="/project/shared/bicf_workflow_ref/GRCh38"
 params.capture="$params.genome/UTSWV2.bed"
