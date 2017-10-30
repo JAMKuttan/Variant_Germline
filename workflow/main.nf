@@ -23,9 +23,9 @@ dbsnp=file(dbsnp)
 
 seqprg = file("/project/BICF/BICF_Core/s166458/seqprg/")
 
-snpeff_vers = 'GRCh38.82';
+snpeff_vers = 'GRCh38.86';
 if (params.genome == '/project/shared/bicf_workflow_ref/GRCm38') {
-   snpeff_vers = 'GRCm38.82';
+   snpeff_vers = 'GRCm38.86';
 }
 if (params.genome == '/project/shared/bicf_workflow_ref/GRCh37') {
    snpeff_vers = 'GRCh37.75';
@@ -79,6 +79,7 @@ Channel
 }
 
 process trimpe {
+  errorStrategy 'ignore'
   publishDir "$baseDir/output", mode: 'copy'
   input:
   set pair_id, file(read1), file(read2) from read_pe
@@ -93,6 +94,7 @@ process trimpe {
   """
 }
 process trimse {
+  errorStrategy 'ignore'
   publishDir "$baseDir/output", mode: 'copy'
   input:
   set pair_id, file(read1) from read_se
@@ -108,7 +110,7 @@ process trimse {
 }
 
 process alignpe {
-
+  errorStrategy 'ignore'
   publishDir "$baseDir/output", mode: 'copy'
   cpus 32
 
@@ -122,22 +124,39 @@ process alignpe {
   when:
   params.pairs == 'pe'
   script:
+  if (params.genome == '/project/shared/bicf_workflow_ref/GRCh38')
   """
-  module load bwakit/0.7.15 seqtk/1.2-r94 samtools/1.4.1 speedseq/20160506 picard/2.10.3
-  seqtk mergepe ${fq1} ${fq2} | bwa mem -M -p -t 30 -R '@RG\\tID:${pair_id}\\tLB:tx\\tPL:illumina\\tPU:barcode\\tSM:${pair_id}' ${gatkref} - 2> log.bwamem | k8 /cm/shared/apps/bwakit/0.7.15/bwa-postalt.js -p ${pair_id}.hla ${gatkref}.alt | samtools view -1 - > output.unsort.bam
+  module load bwakit/0.7.15 bwa/intel/0.7.15 samtools/1.6 bcftools/1.6 htslib/1.6 picard/2.10.3 speedseq/20160506
+  bwa mem -M -t \$SLURM_CPUS_ON_NODE -R '@RG\\tID:${pair_id}\\tLB:tx\\tPL:illumina\\tPU:barcode\\tSM:${pair_id}' ${gatkref} ${fq1} ${fq2} 2> log.bwamem | k8 /cm/shared/apps/bwakit/0.7.15/bwa-postalt.js -p ${pair_id}.hla ${gatkref}.alt | samtools view -1 - > output.unsort.bam
   run-HLA ${pair_id}.hla > ${pair_id}.hla.top 2> ${pair_id}.log.hla
   touch ${pair_id}.hla.HLA-dummy.gt
   cat ${pair_id}.hla.HLA*.gt | grep ^GT | cut -f2- > ${pair_id}.hla.all
   samtools sort --threads \$SLURM_CPUS_ON_NODE -o output.dups.bam output.unsort.bam
-  sambamba markdup -t 20 output.dups.bam ${pair_id}.bam
   samtools view -h output.unsort.bam | samblaster -M -a --excludeDups --addMateTags --maxSplitCount 2 --minNonOverlap 20 -d discordants.sam -s splitters.sam > temp.sam
   gawk '{ if (\$0~"^@") { print; next } else { \$10="*"; \$11="*"; print } }' OFS="\\t" splitters.sam | samtools  view -S -b - | samtools sort -o ${pair_id}.splitters.bam -
   gawk '{ if (\$0~"^@") { print; next } else { \$10="*"; \$11="*"; print } }' OFS="\\t" discordants.sam | samtools  view -S  -b - | samtools sort -o ${pair_id}.discordants.bam -
-  java -Xmx4g -jar \$PICARD/picard.jar CollectInsertSizeMetrics INPUT=${pair_id}.bam HISTOGRAM_FILE=${pair_id}.hist.ps REFERENCE_SEQUENCE=${gatkref} OUTPUT=${pair_id}.hist.txt
+  java -Djava.io.tmpdir=./ -Xmx4g  -jar \$PICARD/picard.jar FixMateInformation ASSUME_SORTED=TRUE SORT_ORDER=coordinate ADD_MATE_CIGAR=TRUE I=output.dups.bam O=output.fix.bam
+  java -Djava.io.tmpdir=./ -Xmx4g  -jar \$PICARD/picard.jar MarkDuplicates I=output.fix.bam O=${pair_id}.bam M=${pair_id}.dedup.stat.txt
+  samtools index ${pair_id}.bam
+  java -Djava.io.tmpdir=./ -Xmx4g -jar \$PICARD/picard.jar CollectInsertSizeMetrics INPUT=${pair_id}.bam HISTOGRAM_FILE=${pair_id}.hist.ps REFERENCE_SEQUENCE=${gatkref} OUTPUT=${pair_id}.hist.txt
   """
+  else
+  """
+  module load speedseq/20160506 bwakit/0.7.15 bwa/intel/0.7.15 samtools/1.6 bcftools/1.6 htslib/1.6 picard/2.10.3
+  bwa mem -M -t \$SLURM_CPUS_ON_NODE -R '@RG\\tID:${pair_id}\\tLB:tx\\tPL:illumina\\tPU:barcode\\tSM:${pair_id}' ${gatkref} ${fq1} ${fq2}  | samtools view -1 - > output.unsort.bam
+  touch ${pair_id}.hla.top
+  samtools sort --threads \$SLURM_CPUS_ON_NODE -o output.dups.bam output.unsort.bam
+  samtools view -h output.unsort.bam | samblaster -M -a --excludeDups --addMateTags --maxSplitCount 2 --minNonOverlap 20 -d discordants.sam -s splitters.sam > temp.sam
+  gawk '{ if (\$0~"^@") { print; next } else { \$10="*"; \$11="*"; print } }' OFS="\\t" splitters.sam | samtools  view -S -b - | samtools sort -o ${pair_id}.splitters.bam -
+  gawk '{ if (\$0~"^@") { print; next } else { \$10="*"; \$11="*"; print } }' OFS="\\t" discordants.sam | samtools  view -S  -b - | samtools sort -o ${pair_id}.discordants.bam -
+  java -Djava.io.tmpdir=./ -Xmx4g  -jar \$PICARD/picard.jar FixMateInformation ASSUME_SORTED=TRUE SORT_ORDER=coordinate ADD_MATE_CIGAR=TRUE I=output.dups.bam O=output.fix.bam
+  java -Djava.io.tmpdir=./ -Xmx4g  -jar \$PICARD/picard.jar MarkDuplicates I=output.fix.bam O=${pair_id}.bam M=${pair_id}.dedup.stat.txt
+  samtools index ${pair_id}.bam
+  java -Djava.io.tmpdir=./ -Xmx4g -jar \$PICARD/picard.jar CollectInsertSizeMetrics INPUT=${pair_id}.bam HISTOGRAM_FILE=${pair_id}.hist.ps REFERENCE_SEQUENCE=${gatkref} OUTPUT=${pair_id}.hist.txt
+  """  
 }
 process alignse {
-
+  errorStrategy 'ignore'
   //publishDir $outDir, mode: 'copy'
   cpus 32
 
@@ -150,13 +169,16 @@ process alignse {
   params.pairs == 'se'
   script:
   """
-  module load bwakit/0.7.15 bwa/intel/0.7.15 samtools/1.4.1 picard/2.10.3 speedseq/20160506
-  bwa mem -M -t 30 -R '@RG\\tLB:tx\\tPL:illumina\\tID:${pair_id}\\tPU:barcode\\tSM:${pair_id}' ${gatkref} ${fq1} 2> log.bwamem | k8 /cm/shared/apps/bwakit/0.7.15/bwa-postalt.js -p ${pair_id}.hla ${gatkref}.alt | samtools view -1 - > output.unsort.bam
+  module load bwakit/0.7.15 bwa/intel/0.7.15 samtools/1.6 bcftools/1.6 htslib/1.6 picard/2.10.3
+  bwa mem -M -t \$SLURM_CPUS_ON_NODE -R '@RG\\tLB:tx\\tPL:illumina\\tID:${pair_id}\\tPU:barcode\\tSM:${pair_id}' ${gatkref} ${fq1} 2> log.bwamem | k8 /cm/shared/apps/bwakit/0.7.15/bwa-postalt.js -p ${pair_id}.hla ${gatkref}.alt | samtools view -1 - > output.unsort.bam
   run-HLA ${pair_id}.hla > ${pair_id}.hla.top 2> ${pair_id}.log.hla
   touch ${pair_id}.hla.HLA-dummy.gt
   cat ${pair_id}.hla.HLA*.gt | grep ^GT | cut -f2- > ${pair_id}.hla.all
   samtools sort --threads \$SLURM_CPUS_ON_NODE -o output.dups.bam output.unsort.bam
-  sambamba markdup -t 20 output.dups.bam ${pair_id}.bam
+  java -Djava.io.tmpdir=./ -Xmx4g  -jar \$PICARD/picard.jar FixMateInformation ASSUME_SORTED=TRUE SORT_ORDER=coordinate ADD_MATE_CIGAR=TRUE I=output.dups.bam O=output.fix.bam
+  java -Djava.io.tmpdir=./ -Xmx4g  -jar \$PICARD/picard.jar MarkDuplicates BARCODE_TAG=RX I=output.fix.bam O=${pair_id}.bam M=${pair_id}.dedup.stat.txt
+  samtools index -@ 30 ${pair_id}.bam
+  java -Xmx4g -jar \$PICARD/picard.jar CollectInsertSizeMetrics INPUT=${pair_id}.bam HISTOGRAM_FILE=${pair_id}.hist.ps REFERENCE_SEQUENCE=${gatkref} OUTPUT=${pair_id}.hist.txt
   """
 }
 
@@ -172,7 +194,7 @@ Channel
 
 // Calculate Metrics of Quality of Alignment
 process seqqc {
-
+  errorStrategy 'ignore'
   publishDir "$baseDir/output", mode: 'copy'
 
   input:
@@ -192,7 +214,7 @@ process seqqc {
   file("${pair_id}.alignmentsummarymetrics.txt") into alignmentsummarymetrics
   script:
   """
-  module load bedtools/2.26.0 picard/2.10.3 samtools/1.4.1 fastqc/0.11.2
+  module load bedtools/2.26.0 picard/2.10.3 samtools/1.6 bcftools/1.6 htslib/1.6 fastqc/0.11.5
   fastqc -f bam ${sbam}
   samtools flagstat ${sbam} > ${pair_id}.flagstat.txt
   samtools view -b --threads \$SLURM_CPUS_ON_NODE -L ${capture_bed} -o ${pair_id}.ontarget.bam ${sbam}
@@ -203,13 +225,13 @@ process seqqc {
   bedtools coverage -sorted -g  ${index_path}/genomefile.txt -a ${capture_bed} -b ${pair_id}.ontarget.bam -hist | grep ^all > ${pair_id}.totgenomecov.txt
   grep ^all ${pair_id}.covhist.txt >  ${pair_id}.genomecov.txt
   samtools view -F 1024 ${pair_id}.ontarget.bam | awk '{sum+=\$5} END { print "Mean MAPQ =",sum/NR}' > ${pair_id}.meanmap.txt
-  java -Xmx32g -jar \$PICARD/picard.jar CollectAlignmentSummaryMetrics R=${gatkref} I=${pair_id}.ontarget.bam OUTPUT=${pair_id}.alignmentsummarymetrics.txt
-  java -Xmx32g -jar \$PICARD/picard.jar EstimateLibraryComplexity I=${pair_id}.ontarget.bam OUTPUT=${pair_id}.libcomplex.txt
+  java -Djava.io.tmpdir=./ -Xmx32g -jar \$PICARD/picard.jar CollectAlignmentSummaryMetrics R=${gatkref} I=${pair_id}.ontarget.bam OUTPUT=${pair_id}.alignmentsummarymetrics.txt
+  java -Djava.io.tmpdir=./ -Xmx32g -jar \$PICARD/picard.jar EstimateLibraryComplexity I=${pair_id}.ontarget.bam OUTPUT=${pair_id}.libcomplex.txt
   """
 }
 
 process parse_stat {
-
+  errorStrategy 'ignore'
   publishDir "$baseDir/output", mode: 'copy'
 
   input:
@@ -236,7 +258,7 @@ process parse_stat {
 }
 
 process svcall {
-
+  errorStrategy 'ignore'
   publishDir "$baseDir/output", mode: 'copy'
   input:
   set pair_id,file(ssbam),file(discordbam),file(splitters) from svbam
@@ -245,14 +267,14 @@ process svcall {
   set pair_id,file("${pair_id}.sssv.sv.vcf.gz.annot.txt") into svannot
   script:
   """
-  module load samtools/1.4.1 bedtools/2.26.0 bcftools/intel/1.3 snpeff/4.2 speedseq/20160506 vcftools/0.1.14
-  speedseq sv -t 30 -o ${pair_id}.sssv -R ${gatkref} -B ${ssbam} -D ${discordbam} -S ${splitters}
+  module load samtools/1.6 bcftools/1.6 htslib/1.6 bedtools/2.26.0 samtools/1.6 bcftools/1.6 htslib/1.6bcftools/1.4.1 snpeff/4.3q speedseq/20160506 vcftools/0.1.14
+  speedseq sv -t \$SLURM_CPUS_ON_NODE -o ${pair_id}.sssv -R ${gatkref} -B ${ssbam} -D ${discordbam} -S ${splitters}
   perl $baseDir/scripts/parse_svresults.pl -i ${pair_id}.sssv.sv.vcf.gz -r ${index_path}
   """
 }
 
 process gatkbam {
-
+  errorStrategy 'ignore'
   publishDir "$baseDir/output", mode: 'copy'
 
   input:
@@ -266,17 +288,17 @@ process gatkbam {
   
   script:
   """
-  module load gatk/3.7 samtools/1.4.1
+  module load gatk/3.7 samtools/1.6 bcftools/1.6 htslib/1.6
   samtools index ${dbam}
-  java -Xmx32g -jar \$GATK_JAR -T RealignerTargetCreator -known ${knownindel} -R ${gatkref} -o ${pair_id}.bam.list -I ${dbam} -nt 30 -nct 1
-  java -Xmx32g -jar \$GATK_JAR -I ${dbam} -R ${gatkref} --filter_mismatching_base_and_quals -T IndelRealigner -targetIntervals ${pair_id}.bam.list -o ${pair_id}.realigned.bam
-  java -Xmx32g -jar \$GATK_JAR -l INFO -R ${gatkref} --knownSites ${dbsnp} -I ${pair_id}.realigned.bam -T BaseRecalibrator -cov ReadGroupCovariate -cov QualityScoreCovariate -cov CycleCovariate -cov ContextCovariate -o ${pair_id}.recal_data.grp -nt 1 -nct \$SLURM_CPUS_ON_NODE
-  java -Xmx32g -jar \$GATK_JAR -T PrintReads -R ${gatkref} -I ${pair_id}.realigned.bam -BQSR ${pair_id}.recal_data.grp -o ${pair_id}.final.bam -nt 1 -nct 8
+  java -Djava.io.tmpdir=./ -Xmx32g -jar \$GATK_JAR -T RealignerTargetCreator -known ${knownindel} -R ${gatkref} -o ${pair_id}.bam.list -I ${dbam} -nt \$SLURM_CPUS_ON_NODE -nct 1
+  java -Djava.io.tmpdir=./ -Xmx32g -jar \$GATK_JAR -I ${dbam} -R ${gatkref} --filter_mismatching_base_and_quals -T IndelRealigner -targetIntervals ${pair_id}.bam.list -o ${pair_id}.realigned.bam
+  java -Djava.io.tmpdir=./ -Xmx32g -jar \$GATK_JAR -l INFO -R ${gatkref} --knownSites ${dbsnp} -I ${pair_id}.realigned.bam -T BaseRecalibrator -cov ReadGroupCovariate -cov QualityScoreCovariate -cov CycleCovariate -cov ContextCovariate -o ${pair_id}.recal_data.grp -nt 1 -nct \$SLURM_CPUS_ON_NODE
+  java -Djava.io.tmpdir=./ -Xmx32g -jar \$GATK_JAR -T PrintReads -R ${gatkref} -I ${pair_id}.realigned.bam -BQSR ${pair_id}.recal_data.grp -o ${pair_id}.final.bam -nt 1 -nct \$SLURM_CPUS_ON_NODE
   """
 }
 
 process gatkgvcf {
-
+  errorStrategy 'ignore'
   publishDir "$baseDir/output", mode: 'copy'
   cpus 30
 
@@ -288,18 +310,20 @@ process gatkgvcf {
   set pair_id, file("${pair_id}.gatkpanel.vcf.gz") into filtgatkvcf
   script:
   """
-  module load python/2.7.x-anaconda gatk/3.7 bedtools/2.26.0 snpeff/4.2 vcftools/0.1.14 
-  java -Xmx32g -jar \$GATK_JAR -R ${gatkref} -D ${dbsnp} -T HaplotypeCaller -stand_call_conf 10 -A FisherStrand -A QualByDepth -A VariantType -A DepthPerAlleleBySample -A HaplotypeScore -A AlleleBalance -variant_index_type LINEAR -variant_index_parameter 128000 --emitRefConfidence GVCF -I ${gbam} -o ${pair_id}.gatk.g.vcf -nct 2
-  java -Xmx32g -jar \$GATK_JAR -R ${gatkref} -D ${dbsnp} -T GenotypeGVCFs -o gatk.vcf -nt 4 --variant ${pair_id}.gatk.g.vcf
+  module load gatk/3.7  samtools/1.6 bcftools/1.6 htslib/1.6  vcftools/0.1.14
+  module list
+  java -Djava.io.tmpdir=./ -Xmx32g -jar \$GATK_JAR -R ${gatkref} -D ${dbsnp} -T HaplotypeCaller -stand_call_conf 10 -A FisherStrand -A QualByDepth -A VariantType -A DepthPerAlleleBySample -A HaplotypeScore -A AlleleBalance -variant_index_type LINEAR -variant_index_parameter 128000 --emitRefConfidence GVCF -I ${gbam} -o ${pair_id}.gatk.g.vcf -nct 2
+  java -Djava.io.tmpdir=./ -Xmx32g -jar \$GATK_JAR -R ${gatkref} -D ${dbsnp} -T GenotypeGVCFs -o gatk.vcf -nt 4 --variant ${pair_id}.gatk.g.vcf
   vcf-annotate -n --fill-type gatk.vcf | bcftools norm -c s -f ${gatkref} -w 10 -O z -o ${pair_id}.gatk.vcf.gz -
   tabix ${pair_id}.gatk.vcf.gz
-  java -Xmx32g -jar \$GATK_JAR -R ${gatkref} -T VariantFiltration -V ${pair_id}.gatk.vcf.gz -window 35 -cluster 3 -filterName FS -filter "FS > 30.0" -filterName QD -filter "QD < 2.0" -o ${pair_id}.filtgatk.vcf 
-  java -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (MQ > 40) & (DP >= 10))' ${pair_id}.filtgatk.vcf | bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > ${pair_id}.gatkpanel.vcf.gz
+  java -Djava.io.tmpdir=./ -Xmx32g -jar \$GATK_JAR -R ${gatkref} -T VariantFiltration -V ${pair_id}.gatk.vcf.gz -window 35 -cluster 3 -filterName FS -filter "FS > 30.0" -filterName QD -filter "QD < 2.0" -o ${pair_id}.filtgatk.vcf 
+  module load  bedtools/2.26.0 snpeff/4.3q
+  java -Djava.io.tmpdir=./ -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (MQ > 40) & (DP >= 10))' ${pair_id}.filtgatk.vcf | bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > ${pair_id}.gatkpanel.vcf.gz
   """
 }
 
 process mpileup {
-
+  errorStrategy 'ignore'
   publishDir "$baseDir/output", mode: 'copy'
   cpus 32
 
@@ -310,14 +334,14 @@ process mpileup {
   set pair_id,file("${pair_id}.sam.vcf.gz") into samvcf
   script:
   """
-  module load python/2.7.x-anaconda samtools/1.4.1 bedtools/2.26.0 bcftools/intel/1.3 snpeff/4.2 vcftools/0.1.14
+  module load python/2.7.x-anaconda samtools/1.6 bcftools/1.6 htslib/1.6 bedtools/2.26.0 snpeff/4.3q vcftools/0.1.14
   samtools mpileup -t 'AD,DP,INFO/AD' -ug -Q20 -C50 -f ${gatkref} ${gbam} | bcftools call --threads 10 -vmO z -o ${pair_id}.sam.ori.vcf.gz
   vcf-sort ${pair_id}.sam.ori.vcf.gz | vcf-annotate -n --fill-type | bcftools norm -c s -f ${gatkref} -w 10 -O z -o ${pair_id}.sam.vcf.gz -
-  java -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (MQ >= 20) & (DP >= 10))' ${pair_id}.sam.vcf.gz |bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > ${pair_id}.sampanel.vcf.gz
+  java -Djava.io.tmpdir=./ -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (MQ >= 20) & (DP >= 10))' ${pair_id}.sam.vcf.gz |bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > ${pair_id}.sampanel.vcf.gz
   """
 }
 process hotspot {
-
+  errorStrategy 'ignore'
   publishDir "$baseDir/output", mode: 'copy'
 
   input:
@@ -328,14 +352,14 @@ process hotspot {
   params.cancer == "detect"
   script:
   """
-  module load python/2.7.x-anaconda samtools/1.4.1 bedtools/2.26.0 bcftools/intel/1.3 snpeff/4.2 vcftools/0.1.14
+  module load python/2.7.x-anaconda samtools/1.6 bcftools/1.6 htslib/1.6 bedtools/2.26.0 snpeff/4.3q vcftools/0.1.14
   samtools mpileup -d 99999 -t 'AD,DP,INFO/AD' -uf ${gatkref} ${gbam} > ${pair_id}.mpi
-  bcftools filter -i "AD[1]/DP > 0.01" ${pair_id}.mpi | bcftools filter -i "DP > 50" | bcftools call --threads 10 -m -A |vcf-annotate -n --fill-type |  bcftools norm -c s -f /project/shared/bicf_workflow_ref/GRCh38/genome.fa -w 10 -O z -o ${pair_id}.lowfreq.vcf.gz -
-  java -jar \$SNPEFF_HOME/SnpSift.jar annotate ${index_path}/cosmic.vcf.gz ${pair_id}.lowfreq.vcf.gz | java -jar \$SNPEFF_HOME/SnpSift.jar filter "(CNT[*] >0)" - |bgzip > ${pair_id}.hotspot.vcf.gz
+  bcftools filter -i "AD[1]/DP > 0.01" ${pair_id}.mpi | bcftools filter -i "DP > 50" | bcftools call --threads 10 -m -A |vcf-annotate -n --fill-type |  bcftools norm -c s -f ${gatkref} -w 10 -O z -o ${pair_id}.lowfreq.vcf.gz -
+  java -Djava.io.tmpdir=./ -jar \$SNPEFF_HOME/SnpSift.jar annotate ${index_path}/cosmic.vcf.gz ${pair_id}.lowfreq.vcf.gz | java -Djava.io.tmpdir=./ -jar \$SNPEFF_HOME/SnpSift.jar filter "(CNT[*] >0)" - |bgzip > ${pair_id}.hotspot.vcf.gz
   """
 }
 process speedseq {
-
+  errorStrategy 'ignore'
   publishDir "$baseDir/output", mode: 'copy'
 
   input:
@@ -346,14 +370,14 @@ process speedseq {
 
   script:
   """
-  module load python/2.7.x-anaconda samtools/1.4.1 bedtools/2.26.0 bcftools/intel/1.3 snpeff/4.2 speedseq/20160506 vcftools/0.1.14
+  module load python/2.7.x-anaconda samtools/1.6 bcftools/1.6 htslib/1.6 bedtools/2.26.0 snpeff/4.3q speedseq/20160506 vcftools/0.1.14
   speedseq var -t \$SLURM_CPUS_ON_NODE -o ssvar ${gatkref} ${gbam}
   vcf-annotate -n --fill-type ssvar.vcf.gz| bcftools norm -c s -f ${gatkref} -w 10 -O z -o ${pair_id}.ssvar.vcf.gz -
-  java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (DP >= 10))' ${pair_id}.ssvar.vcf.gz |bedtools intersect -header -a stdin -b ${capture_bed} | bgzip > ${pair_id}.sspanel.vcf.gz
+  java -Djava.io.tmpdir=./ -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar filter '((QUAL >= 10) & (DP >= 10))' ${pair_id}.ssvar.vcf.gz |bedtools intersect -header -a stdin -b ${capture_bed} | bgzip > ${pair_id}.sspanel.vcf.gz
   """
 }
 process platypus {
-
+  errorStrategy 'ignore'
   publishDir "$baseDir/output", mode: 'copy'
   cpus 32
 
@@ -366,36 +390,36 @@ process platypus {
 
   script:
   """
-  module load python/2.7.x-anaconda bedtools/2.26.0 snpeff/4.2 platypus/gcc/0.8.1 bcftools/intel/1.3 samtools/1.4.1 vcftools/0.1.14
-  Platypus.py callVariants --minMapQual=10 --mergeClusteredVariants=1 --nCPU=30 --bamFiles=${gbam} --refFile=${gatkref} --output=platypus.vcf
+  module load python/2.7.x-anaconda bedtools/2.26.0 snpeff/4.3q platypus/gcc/0.8.1 samtools/1.6 bcftools/1.6 htslib/1.6 vcftools/0.1.14
+  Platypus.py callVariants --minMapQual=10 --mergeClusteredVariants=1 --nCPU=\$SLURM_CPUS_ON_NODE --bamFiles=${gbam} --refFile=${gatkref} --output=platypus.vcf
   bgzip platypus.vcf
   tabix platypus.vcf.gz
   vcf-sort platypus.vcf.gz| vcf-annotate -n --fill-type -n | bcftools norm -c s -f ${gatkref} -w 10 -O z -o ${pair_id}.platypus.vcf.gz -
-  java -jar \$SNPEFF_HOME/SnpSift.jar filter "((QUAL >= 10) & (QD > 2) & (FILTER = 'PASS'))" ${pair_id}.platypus.vcf.gz | bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > ${pair_id}.platpanel.vcf.gz
+  java -Djava.io.tmpdir=./ -jar \$SNPEFF_HOME/SnpSift.jar filter "((QUAL >= 10) & (QD > 2) & (FILTER = 'PASS'))" ${pair_id}.platypus.vcf.gz | bedtools intersect -header -a stdin -b ${capture_bed} |bgzip > ${pair_id}.platpanel.vcf.gz
   """
 }
 
-ssvcf .phase(gatkvcf)
-      .map {p,q -> [p[0],p[1],q[1]]}
-      .set { twovcf }
-twovcf .phase(samvcf)
-      .map {p,q -> [p[0],p[1],p[2],q[1]]}
-      .set { threevcf }
-threevcf .phase(platvcf)
-      .map {p,q -> [p[0],p[1],p[2],p[3],q[1]]}
-      .set { fourvcf }
+ssvcf
+  .phase(gatkvcf)
+  .map {p,q -> [p[0],p[1],q[1]]}
+  .phase(samvcf)
+  .map {p,q -> [p[0],p[1],p[2],q[1]]}
+  .phase(platvcf)
+  .map {p,q -> [p[0],p[1],p[2],p[3],q[1]]}
+  .set { fourvcf }
 if (params.cancer == "detect") {
-  fourvcf .phase(hsvcf)
-  	.map {p,q -> [p[0],p[1],p[2],p[3],p[4],q[1]]}
-      	.set { vcflist }
+  fourvcf
+  .phase(hsvcf)
+  .map {p,q -> [p[0],p[1],p[2],p[3],p[4],q[1]]}
+  .set { vcflist }
 }
 else {
-  Channel
-	.from(fourvcf)
-  	.into {vcflist}
+  fourvcf
+  .into {vcflist}
 }
 
 process integrate {
+  errorStrategy 'ignore'
   publishDir "$baseDir/output", mode: 'copy'
 
   input:
@@ -406,15 +430,15 @@ process integrate {
   script:
   if (params.cancer == "detect")
   """
-  module load gatk/3.7 python/2.7.x-anaconda bedtools/2.26.0 snpeff/4.2 bcftools/intel/1.3 samtools/1.4.1 vcftools/0.1.14
-  bedtools multiinter -i ${gatk} ${sam} ${ss} ${plat} ${hs} -names gatk sam ssvar platypus hotspot |cut -f 1,2,3,5 | bedtools sort -i stdin | bedtools merge -c 4 -o distinct >  ${fname}_integrate.bed
+  module load gatk/3.7 bedtools/2.26.0 samtools/1.6 bcftools/1.6 htslib/1.6 vcftools/0.1.14
   bedtools intersect -header -v -a ${hs} -b ${sam} |bedtools intersect -header -v -a stdin -b ${gatk} | bedtools intersect -header -v -a stdin -b ${ss} |  bedtools intersect -header -v -a stdin -b ${plat} | bgzip > ${fname}.hotspot.nooverlap.vcf.gz
+  bedtools multiinter -i ${gatk} ${sam} ${ss} ${plat} ${fname}.hotspot.nooverlap.vcf.gz -names gatk sam ssvar platypus hotspot |cut -f 1,2,3,5 | bedtools sort -i stdin | bedtools merge -c 4 -o distinct >  ${fname}_integrate.bed
   tabix ${fname}.hotspot.nooverlap.vcf.gz
   tabix ${gatk}
   tabix ${sam}
   tabix ${ss}
   tabix ${plat}
-  java -Xmx32g -jar \$GATK_JAR -R ${gatkref} -T CombineVariants --filteredrecordsmergetype KEEP_UNCONDITIONAL --variant:gatk ${gatk} --variant:sam ${sam} --variant:ssvar ${ss} --variant:platypus ${plat} --variant:hotspot ${fname}.hotspot.nooverlap.vcf.gz -genotypeMergeOptions PRIORITIZE -priority sam,ssvar,gatk,platypus,hotspot -o ${fname}.int.vcf
+  java -Djava.io.tmpdir=./ -Xmx32g -jar \$GATK_JAR -R ${gatkref} -T CombineVariants --filteredrecordsmergetype KEEP_UNCONDITIONAL --variant:gatk ${gatk} --variant:sam ${sam} --variant:ssvar ${ss} --variant:platypus ${plat} --variant:hotspot ${fname}.hotspot.nooverlap.vcf.gz -genotypeMergeOptions PRIORITIZE -priority sam,ssvar,gatk,platypus,hotspot -o ${fname}.int.vcf
   perl $baseDir/scripts/uniform_integrated_vcf.pl ${fname}.int.vcf
   bgzip ${fname}_integrate.bed
   tabix ${fname}_integrate.bed.gz
@@ -424,14 +448,14 @@ process integrate {
   """
   else
   """
-  module load gatk/3.7 python/2.7.x-anaconda bedtools/2.26.0 snpeff/4.2 bcftools/intel/1.3 samtools/1.4.1
+  module load gatk/3.7 python/2.7.x-anaconda bedtools/2.26.0 samtools/1.6 bcftools/1.6 htslib/1.6
   module load vcftools/0.1.14
   bedtools multiinter -i ${gatk} ${sam} ${ss} ${plat} -names gatk sam ssvar platypus |cut -f 1,2,3,5 | bedtools sort -i stdin | bedtools merge -c 4 -o distinct >  ${fname}_integrate.bed
   tabix ${gatk}
   tabix ${sam}
   tabix ${ss}
   tabix ${plat}
-  java -Xmx32g -jar \$GATK_JAR -R ${gatkref} -T CombineVariants --filteredrecordsmergetype KEEP_UNCONDITIONAL --variant:gatk ${gatk} --variant:sam ${sam} --variant:ssvar ${ss} --variant:platypus ${plat} -genotypeMergeOptions PRIORITIZE -priority sam,ssvar,gatk,platypus -o ${fname}.int.vcf
+  java -Djava.io.tmpdir=./ -Xmx32g -jar \$GATK_JAR -R ${gatkref} -T CombineVariants --filteredrecordsmergetype KEEP_UNCONDITIONAL --variant:gatk ${gatk} --variant:sam ${sam} --variant:ssvar ${ss} --variant:platypus ${plat} -genotypeMergeOptions PRIORITIZE -priority sam,ssvar,gatk,platypus -o ${fname}.int.vcf
   perl $baseDir/scripts/uniform_integrated_vcf.pl ${fname}.int.vcf
   bgzip ${fname}_integrate.bed
   tabix ${fname}_integrate.bed.gz
@@ -442,7 +466,8 @@ process integrate {
 }
 
 process annot {
-  publishDir "$baseDir/output", mode: 'copy'
+   errorStrategy 'ignore'
+   publishDir "$baseDir/output", mode: 'copy'
 
   input:
   set fname,unionvcf from union
@@ -450,12 +475,11 @@ process annot {
   output:
   file("${fname}.annot.vcf.gz") into annotvcf
   file("${fname}.stats.txt") into stats
-  file("${fname}.statplot*") into plotstats
 
   script:
   if (params.genome == '/project/shared/bicf_workflow_ref/GRCh38')
   """
-  module load python/2.7.x-anaconda bedtools/2.26.0 snpeff/4.2 bcftools/intel/1.3 samtools/1.4.1
+  module load bedtools/2.26.0 snpeff/4.3q samtools/1.6 bcftools/1.6 htslib/1.6
   tabix ${unionvcf}
   bcftools annotate -Oz -a ${index_path}/ExAC.vcf.gz -o ${fname}.exac.vcf.gz --columns CHROM,POS,AC_Het,AC_Hom,AC_Hemi,AC_Adj,AN_Adj,AC_POPMAX,AN_POPMAX,POPMAX ${unionvcf}
   tabix ${fname}.exac.vcf.gz 
@@ -463,17 +487,15 @@ process annot {
   tabix ${fname}.dbsnp.vcf.gz
   bcftools annotate -Oz -a ${index_path}/clinvar.vcf.gz -o ${fname}.clinvar.vcf.gz --columns CHROM,POS,CLNSIG,CLNDSDB,CLNDSDBID,CLNDBN,CLNREVSTAT,CLNACC ${fname}.dbsnp.vcf.gz
   tabix ${fname}.clinvar.vcf.gz
-  java -Xmx10g -jar \$SNPEFF_HOME/snpEff.jar -no-intergenic -lof -c \$SNPEFF_HOME/snpEff.config ${snpeff_vers} ${fname}.clinvar.vcf.gz | java -jar \$SNPEFF_HOME/SnpSift.jar annotate ${index_path}/cosmic.vcf.gz - | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar dbnsfp -v -db ${index_path}/dbNSFP.txt.gz - | java -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar gwasCat -db ${index_path}/gwas_catalog.tsv - |bgzip > ${fname}.annot.vcf.gz
+  java -Djava.io.tmpdir=./ -Xmx10g -jar \$SNPEFF_HOME/snpEff.jar -no-intergenic -lof -c \$SNPEFF_HOME/snpEff.config ${snpeff_vers} ${fname}.clinvar.vcf.gz | java -Djava.io.tmpdir=./ -jar \$SNPEFF_HOME/SnpSift.jar annotate ${index_path}/cosmic.vcf.gz - | java -Djava.io.tmpdir=./ -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar dbnsfp -v -db ${index_path}/dbNSFP.txt.gz - | java -Djava.io.tmpdir=./ -Xmx10g -jar \$SNPEFF_HOME/SnpSift.jar gwasCat -db ${index_path}/gwas_catalog.tsv - |bgzip > ${fname}.annot.vcf.gz
   tabix ${fname}.annot.vcf.gz
   bcftools stats ${fname}.annot.vcf.gz > ${fname}.stats.txt
-  plot-vcfstats -s -p ${fname}.statplot ${fname}.stats.txt
   """
   else
   """
-  module load snpeff/4.2
-  java -Xmx10g -jar \$SNPEFF_HOME/snpEff.jar -no-intergenic -lof -c \$SNPEFF_HOME/snpEff.config ${snpeff_vers} ${unionvcf} |bgzip > ${fname}.annot.vcf.gz
+  module load snpeff/4.3q samtools/1.6 bcftools/1.6 htslib/1.6
+  java -Djava.io.tmpdir=./ -Xmx10g -jar \$SNPEFF_HOME/snpEff.jar -no-intergenic -lof -c \$SNPEFF_HOME/snpEff.config ${snpeff_vers} ${unionvcf} |bgzip > ${fname}.annot.vcf.gz
   tabix ${fname}.annot.vcf.gz
   bcftools stats ${fname}.annot.vcf.gz > ${fname}.stats.txt
-  plot-vcfstats -s -p ${fname}.statplot ${fname}.stats.txt
-  """
+   """
 }
