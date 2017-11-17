@@ -37,19 +37,6 @@ foreach $sfile (@statfiles) {
       $hash{propair} = 100*sprintf("%.4f",$1/$hash{total});
 	}
   }
-  # open FLAG, "<$prefix\.ontarget.flagstat.txt" or die $!;
-  # while (my $line = <FLAG>) {
-  #   chomp($line);
-  #   if ($line =~ m/(\d+) \+ \d+ in total/) {
-  #     $hash{ontarget} = $1;
-  #   }elsif ($line =~ m/(\d+) \+ \d+ read1/) {
-  #     $hash{ontarget_pairs} = $1;
-  #   }elsif ($line =~ m/(\d+) \+ \d+ properly paired/) {
-  #     $hash{ontarget_propair} = 100*sprintf("%.4f",$1/$hash{total});
-  #   }elsif ($line =~ m/(\d+) \+ \d+ properly paired/) {
-  #     $hash{ontarget_propair} = 100*sprintf("%.4f",$1/$hash{total});
-  #   }
-  # }
   open ASM, "<$prefix\.alignmentsummarymetrics.txt" or die $!;
   while (my $line = <ASM>) {
     chomp($line);
@@ -121,7 +108,7 @@ foreach $sfile (@statfiles) {
     }
   }
   my %cov;
-  open COV, "<$prefix\.totgenomecov.txt" or die $!;
+  open COV, "<$prefix\.genomecov.txt" or die $!;
   my $sumdepth;
   my $totalbases;
   while (my $line = <COV>) {
@@ -146,7 +133,7 @@ foreach $sfile (@statfiles) {
   $hash{'perc50x'} = 100*sprintf("%.4f",1-$cum_sum[50]);
   $hash{'perc100x'} = 100*sprintf("%.4f",1-$cum_sum[100]);
   $hash{'perc200x'} = 100*sprintf("%.4f",1-$cum_sum[200]);
-  open COV, "<$prefix\.genomecov.txt" or die $!;
+  open COV, "<$prefix\.dedupcov.txt" or die $!;
   $sumdepth = 0;
   $totalbases = 0;
   my %dedup_cov;
