@@ -309,7 +309,7 @@ if (params.cancer == "detect") {
 else {
    Channel
 	.empty()
-  	.mix(ssvcf,gatkvcf,samvcf,hsvcf)
+  	.mix(ssvcf,gatkvcf,samvcf,platvcf)
 	.groupTuple(by:0)
 	.into { vcflist}
 
@@ -318,7 +318,7 @@ else {
 
 process integrate {
   errorStrategy 'ignore'
-  publishDir "$params.output", mode: 'copy'
+  //publishDir "$params.output", mode: 'copy'
   input:
   set subjid,file(vcfs) from vcflist
     
