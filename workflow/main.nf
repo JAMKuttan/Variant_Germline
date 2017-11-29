@@ -191,20 +191,6 @@ gbam
    .groupTuple(by:0)		
    .into { ssbam; sambam; hsbam; gatkbam; platbam }
 
-process cnv {
-  errorStrategy 'ignore'
-  publishDir "$params.output/$pair_id", mode: 'copy'
-  input:
-  set pair_id,file(sbam),file(sidx) from cnvbam
-  output:
-  file("${pair_id}.call.cns") into cnvtxt
-  file("${pair_id}.cnv.pdf") into cnvpdf
-  script:
-  """
-  source /etc/profile.d/modules.sh	
-  bash $baseDir/process_scripts/variants/cnvkit.sh -b $sbam -p $pair_id
-  """
-}
  
 process svcall {
   errorStrategy 'ignore'
