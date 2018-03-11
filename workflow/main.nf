@@ -309,24 +309,10 @@ process integrate {
   set subjid,file(vcfs) from vcflist
     
   output:
-  set subjid,file("${subjid}.union.vcf.gz") into union
-  script:
-  """
-  bash $baseDir/process_scripts/variants/union.sh -r $index_path -p $subjid
-  """
-}
-
-process annot {
-  errorStrategy 'ignore'
-  publishDir "$params.output", mode: 'copy'
-
-  input:
-  set subjid,unionvcf from union
-  
-  output:
   file("${subjid}.annot.vcf.gz") into annotvcf
   script:
   """
-  bash $baseDir/process_scripts/variants/annotvcf.sh -p $subjid -r $index_path -v $unionvcf
+  bash $baseDir/process_scripts/variants/union.sh -r $index_path -p $subjid
+  bash $baseDir/process_scripts/variants/annotvcf.sh -p $subjid -r $index_path -v ${subjid}.union.vcf.gz
   """
 }
