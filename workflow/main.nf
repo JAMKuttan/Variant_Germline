@@ -97,7 +97,7 @@ process align {
   """
  }
 
-process markdups_picard {
+process markdups {
   //publishDir "$params.output/$pair_id", mode: 'copy'
 
   input:
@@ -189,7 +189,7 @@ process gatkbam {
 
 gbam
    .groupTuple(by:0)		
-   .into { ssbam; sambam; hsbam; gatkbam; platbam }
+   .into { ssbam; sambam; hsbam; strelkabam; platbam }
 
  
 process svcall {
@@ -253,21 +253,18 @@ process speedseq {
   bash $baseDir/process_scripts/variants/germline_vc.sh -r $index_path -p $subjid -a speedseq
   """
 }
-process gatkgvcf {
+process strelka2 {
   errorStrategy 'ignore'
-  //publishDir "$baseDir/output", mode: 'copy'
 
   input:
-  set subjid,file(gbam),file(gidx) from gatkbam
+  set subjid,file(gbam),file(gidx) from strelkabam
   output:
-  set subjid, file("${subjid}.gatk.vcf.gz") into gatkvcf
+  set subjid,file("${subjid}.strelka2.vcf.gz") into strelkavcf
   script:
   """
-  source /etc/profile.d/modules.sh
-  bash $baseDir/process_scripts/variants/germline_vc.sh -r $index_path -p $subjid -a gatk
+  bash $baseDir/process_scripts/variants/germline_vc.sh -r $index_path -p $subjid -a strelka2
   """
 }
-
 process platypus {
   errorStrategy 'ignore'
   //publishDir "$params.output", mode: 'copy'
@@ -288,14 +285,14 @@ process platypus {
 if (params.cancer == "detect") {
    Channel
 	.empty()
-  	.mix(ssvcf,gatkvcf,samvcf,platvcf,hsvcf)
+  	.mix(ssvcf,strelkavcf,samvcf,platvcf,hsvcf)
 	.groupTuple(by:0)
 	.into { vcflist}
 }
 else {
    Channel
 	.empty()
-  	.mix(ssvcf,gatkvcf,samvcf,platvcf)
+  	.mix(ssvcf,strelkavcf,samvcf,platvcf)
 	.groupTuple(by:0)
 	.into { vcflist}
 
