@@ -67,7 +67,7 @@ Channel
 
 process trimpe {
   errorStrategy 'ignore'
-  publishDir "$baseDir/output", mode: 'copy'
+  publishDir "$params.output", mode: 'copy'
   input:
   set famid,pair_id, file(read1), file(read2) from read
   output:
