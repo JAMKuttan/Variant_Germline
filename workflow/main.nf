@@ -5,9 +5,6 @@ params.fastqs="$params.input/*.fastq.gz"
 params.design="$params.input/design.txt"
 params.output = "$baseDir/output"
 
-params.fastqs="$params.input/*.fastq.gz"
-params.design="$params.input/design.txt"
-
 params.genome="/project/shared/bicf_workflow_ref/GRCh38"
 params.capture="$params.genome/UTSWV2.bed"
 params.pairs="pe"
