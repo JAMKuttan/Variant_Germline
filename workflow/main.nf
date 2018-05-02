@@ -8,8 +8,11 @@ params.output = "$baseDir/output"
 params.genome="/project/shared/bicf_workflow_ref/GRCh38"
 params.capture="$params.genome/UTSWV2.bed"
 params.pairs="pe"
-params.markdups='sambamba'
 params.cancer='skip'
+params.callers = 'all'
+params.markdups='sambamba'
+params.callsvs="detect"
+
 
 reffa=file("$params.genome/genome.fa")
 dbsnp="$params.genome/dbSnp.vcf.gz"
@@ -22,6 +25,10 @@ knownindel=file(indel)
 index_path = file(params.genome)
 capture_bed = file(params.capture)
 
+alignopts = ''
+if (params.markdups == 'fgbio_umi') {
+   alignopts='-u'
+}
 
 def fileMap = [:]
 
@@ -38,19 +45,26 @@ new File(params.design).withReader { reader ->
     def hline = reader.readLine()
     def header = hline.split("\t")
     prefixidx = header.findIndexOf{it == 'SampleID'};
-    familyidx = header.findIndexOf{it == 'FamilyID'};
+    fidx = header.findIndexOf{it == 'FamilyID'};
+    sidx = header.findIndexOf{it == 'SubjectID'};
     oneidx = header.findIndexOf{it == 'FqR1'};
     twoidx = header.findIndexOf{it == 'FqR2'};
     if (twoidx == -1) {
        twoidx = oneidx
        }
-   if (familyidx == -1) {
-       familyidx = prefixidx
-       }    
+    if (sidx == -1) {
+       sidx = prefixidx
+    }
+    if (fidx == -1) {
+       fidx = sidx
+    }
+    if (twoidx == -1) {
+       twoidx = oneidx
+    }
     while (line = reader.readLine()) {
     	   def row = line.split("\t")
     if (fileMap.get(row[oneidx]) != null) {
-	prefix << tuple(row[familyidx],row[prefixidx],fileMap.get(row[oneidx]),fileMap.get(row[twoidx]))
+	prefix << tuple(row[fidx],row[prefixidx],fileMap.get(row[oneidx]),fileMap.get(row[twoidx]))
 	   }
 
 }
@@ -62,15 +76,18 @@ Channel
   .from(prefix)
   .set { read }
 
-process trimpe {
+process trim {
   errorStrategy 'ignore'
   publishDir "$params.output", mode: 'copy'
+
   input:
   set famid,pair_id, file(read1), file(read2) from read
+
   output:
   set famid,pair_id, file("${pair_id}.trim.R1.fastq.gz"),file("${pair_id}.trim.R2.fastq.gz") into trimread
-  set famid,pair_id, file("${pair_id}.trim.R1.fastq.gz"),file("${pair_id}.trim.R2.fastq.gz") into fusionfq
+   set famid,pair_id, file("${pair_id}.trim.R1.fastq.gz"),file("${pair_id}.trim.R2.fastq.gz") into genotypefq
   file("${pair_id}.trimreport.txt") into trimstat
+
   script:
   """
   bash $baseDir/process_scripts/preproc_fastq/trimgalore.sh -p ${pair_id} -a ${read1} -b ${read2}
@@ -84,28 +101,48 @@ process align {
 
   input:
   set famid,pair_id, file(fq1), file(fq2) from trimread
+
   output:
   set pair_id, file("${pair_id}.bam"),file("${pair_id}.bam.bai") into svbam
   set pair_id, file("${pair_id}.bam"),file("${pair_id}.bam.bai") into cnvbam
   set famid,pair_id, file("${pair_id}.bam") into aligned
+
+  script:
   """
-  source /etc/profile.d/modules.sh
   bash $baseDir/process_scripts/alignment/dnaseqalign.sh -r $index_path -p $pair_id -x $fq1 -y $fq2
   """
  }
+
+process hlacalls {
+  errorStrategy 'ignore'
+  publishDir "$params.output/$pair_id", mode: 'copy'
+
+  input:
+  set famid,pair_id, file(fq1), file(fq2) from genotypefq
+
+  output:
+  file("*.hisat_hla.*") into genotype
+
+  script:
+  """
+  bash $baseDir/process_scripts/alignment/hisat_genotype.sh -p $pair_id -x $fq1 -y $fq2
+  """
+}
+
 
 process markdups {
   //publishDir "$params.output/$pair_id", mode: 'copy'
 
   input:
   set famid,pair_id, file(sbam) from aligned
+
   output:
   set pair_id, file("${pair_id}.dedup.bam") into qcbam
   set famid,pair_id, file("${pair_id}.dedup.bam") into deduped
+
   script:
   """
-  source /etc/profile.d/modules.sh
-  bash $baseDir/process_scripts/alignment/markdups.sh -a picard_umi -b $sbam -p $pair_id
+  bash $baseDir/process_scripts/alignment/markdups.sh -a $params.markdups -b $sbam -p $pair_id
   """
 }
 
@@ -115,6 +152,7 @@ process seqqc {
 
   input:
   set pair_id, file(sbam) from qcbam
+
   output:
   file("${pair_id}.flagstat.txt") into alignstats
   file("${pair_id}.ontarget.flagstat.txt") into ontarget
@@ -130,9 +168,12 @@ process seqqc {
   file("${pair_id}.covhist.txt") into covhist
   file("*coverage.txt") into capcovstat
   file("${pair_id}.mapqualcov.txt") into mapqualcov
+
+  when:
+  params.callsvs == "detect"
+  
   script:
   """
-  source /etc/profile.d/modules.sh
   bash $baseDir/process_scripts/alignment/bamqc.sh -c $capture_bed -n dna -r $index_path -b $sbam -p $pair_id
   """
 }
@@ -156,9 +197,9 @@ process parse_stat {
   output:
   file('*sequence.stats.txt')
   file('*.png')
+  
   script:
   """
-  source /etc/profile.d/modules.sh
   module load R/3.2.1-intel
   perl $baseDir/scripts/parse_seqqc.pl *.genomecov.txt
   perl $baseDir/scripts/covstats.pl *.mapqualcov.txt
@@ -178,8 +219,6 @@ process gatkbam {
   
   script:
   """
-  source /etc/profile.d/modules.sh
-  module load gatk/3.7 samtools/1.4.1
   bash $baseDir/process_scripts/variants/gatkrunner.sh -a gatkbam -b $sbam -r ${index_path} -p $pair_id
   """
 }
@@ -201,7 +240,6 @@ process svcall {
   file("${pair_id}.sv.annot.txt") into svannot
   script:
   """
-  source /etc/profile.d/modules.sh	
   bash $baseDir/process_scripts/variants/svcalling.sh -b $ssbam -r $index_path -p $pair_id
   """
 }
@@ -215,9 +253,10 @@ process mpileup {
   
   output:
   set subjid,file("${subjid}.sam.vcf.gz") into samvcf
+  when:
+  params.callers == 'all' || params.callers == 'mpileup'
   script:
   """
-  source /etc/profile.d/modules.sh
   bash $baseDir/process_scripts/variants/germline_vc.sh -r $index_path -p $subjid -a mpileup
   """
 }
@@ -233,7 +272,6 @@ process hotspot {
   params.cancer == "detect"
   script:
   """
-  source /etc/profile.d/modules.sh
   bash $baseDir/process_scripts/variants/germline_vc.sh -r $index_path -p $subjid -a hotspot
   """
 }
@@ -244,9 +282,10 @@ process speedseq {
   set subjid,file(gbam),file(gidx) from ssbam
   output:
   set subjid,file("${subjid}.ssvar.vcf.gz") into ssvcf
+  when:
+  params.callers == 'all' || params.callers == 'speedseq'
   script:
   """
-  source /etc/profile.d/modules.sh
   bash $baseDir/process_scripts/variants/germline_vc.sh -r $index_path -p $subjid -a speedseq
   """
 }
@@ -257,6 +296,8 @@ process strelka2 {
   set subjid,file(gbam),file(gidx) from strelkabam
   output:
   set subjid,file("${subjid}.strelka2.vcf.gz") into strelkavcf
+  when:
+  params.callers == 'all' || params.callers == 'strelka2'
   script:
   """
   bash $baseDir/process_scripts/variants/germline_vc.sh -r $index_path -p $subjid -a strelka2
@@ -271,11 +312,28 @@ process platypus {
 
   output:
   set subjid,file("${subjid}.platypus.vcf.gz") into platvcf
+  when:
+  params.callers == 'all' || params.callers == 'platypus'
   script:
   """
-  source /etc/profile.d/modules.sh
   bash $baseDir/process_scripts/variants/germline_vc.sh -r $index_path -p $subjid -a platypus
-  
+  """
+}
+
+process gatk {
+  errorStrategy 'ignore'
+  //publishDir "$params.output", mode: 'copy'
+
+  input:
+  set subjid,file(gbam),file(gidx) from gatkbam
+
+  output:
+  set subjid,file("${subjid}.platypus.vcf.gz") into gatkvcf
+  when:
+  params.callers == 'gatk'
+  script:
+  """
+  bash $baseDir/process_scripts/variants/germline_vc.sh -r $index_path -p $subjid -a gatk
   """
 }
 
