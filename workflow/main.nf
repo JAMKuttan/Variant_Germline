@@ -222,7 +222,7 @@ process gatkbam {
 
 gbam
    .groupTuple(by:0)		
-   .into { ssbam; sambam; hsbam; strelkabam; platbam }
+   .into { ssbam; sambam; hsbam; strelkabam; platbam; gkbam }
 
  
 process svcall {
@@ -327,7 +327,7 @@ process gatk {
   //publishDir "$params.output", mode: 'copy'
 
   input:
-  set subjid,file(gbam),file(gidx) from gatkbam
+  set subjid,file(gbam),file(gidx) from gkbam
 
   output:
   set subjid,file("${subjid}.platypus.vcf.gz") into gatkvcf
