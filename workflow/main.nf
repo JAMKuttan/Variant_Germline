@@ -169,9 +169,6 @@ process seqqc {
   file("*coverage.txt") into capcovstat
   file("${pair_id}.mapqualcov.txt") into mapqualcov
 
-  when:
-  params.callsvs == "detect"
-  
   script:
   """
   bash $baseDir/process_scripts/alignment/bamqc.sh -c $capture_bed -n dna -r $index_path -b $sbam -p $pair_id
@@ -236,8 +233,13 @@ process svcall {
   output:
   file("${pair_id}.delly.vcf.gz") into dellyvcf
   file("${pair_id}.sssv.sv.vcf.gz") into svvcf
-  file("${pair_id}.sv.vcf.gz") into svintvcf
+  file("${pair_id}.sv.annot.vcf.gz") into svintvcf
   file("${pair_id}.sv.annot.txt") into svannot
+  file("${pair_id}.sv.annot.genefusion.txt") into gfusion
+
+  when:
+  params.callsvs == "detect"
+  
   script:
   """
   bash $baseDir/process_scripts/variants/svcalling.sh -b $ssbam -r $index_path -p $pair_id
