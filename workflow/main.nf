@@ -122,7 +122,7 @@ process hlacalls {
 
   output:
   file("*.hisat_hla.*") into genotype
-
+  
   script:
   """
   bash $baseDir/process_scripts/alignment/hisat_genotype.sh -p $pair_id -x $fq1 -y $fq2
