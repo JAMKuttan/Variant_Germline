@@ -11,7 +11,7 @@ params.pairs="pe"
 params.cancer='skip'
 params.callers = 'all'
 params.markdups='sambamba'
-params.callsvs="detect"
+params.callsvs="skip"
 
 
 reffa=file("$params.genome/genome.fa")
@@ -232,24 +232,20 @@ process svcall {
   input:
   set pair_id,file(ssbam),file(ssidx) from svbam
   output:
-  file("${pair_id}.delly.vcf.gz") into dellyvcf
-  file("${pair_id}.sssv.sv.vcf.gz") into svvcf
-  file("${pair_id}.sv.annot.vcf.gz") into svintvcf
-  file("${pair_id}.sv.annot.txt") into svannot
-  file("${pair_id}.sv.annot.genefusion.txt") into gfusion
+  file("${pair_id}.sv.vcf.gz") into svvcf
 
   when:
-  params.callsvs == "detect"
+  params.callsvs != "skip"
   
   script:
   """
-  bash $baseDir/process_scripts/variants/svcalling.sh -b $ssbam -r $index_path -p $pair_id
+  bash $baseDir/process_scripts/variants/svcalling.sh -a $params.callsvs -b $ssbam -r $index_path -p $pair_id
   """
 }
 
 process mpileup {
   errorStrategy 'ignore'
-  //publishDir "$baseDir/output", mode: 'copy'
+  publishDir "$baseDir/output", mode: 'copy'
 
   input:
   set subjid,file(gbam),file(gidx) from sambam
@@ -265,7 +261,7 @@ process mpileup {
 }
 process hotspot {
   errorStrategy 'ignore'
-  //publishDir "$baseDir/output", mode: 'copy'
+  publishDir "$baseDir/output", mode: 'copy'
 
   input:
   set subjid,file(gbam),file(gidx) from hsbam
@@ -280,7 +276,7 @@ process hotspot {
 }
 process speedseq {
   errorStrategy 'ignore'
-  //publishDir "$baseDir/output", mode: 'copy'
+  publishDir "$baseDir/output", mode: 'copy'
   input:
   set subjid,file(gbam),file(gidx) from ssbam
   output:
@@ -294,7 +290,7 @@ process speedseq {
 }
 process strelka2 {
   errorStrategy 'ignore'
-
+  publishDir "$baseDir/output", mode: 'copy'
   input:
   set subjid,file(gbam),file(gidx) from strelkabam
   output:
@@ -308,7 +304,7 @@ process strelka2 {
 }
 process platypus {
   errorStrategy 'ignore'
-  //publishDir "$params.output", mode: 'copy'
+  publishDir "$params.output", mode: 'copy'
 
   input:
   set subjid,file(gbam),file(gidx) from platbam
@@ -325,7 +321,7 @@ process platypus {
 
 process gatk {
   errorStrategy 'ignore'
-  //publishDir "$params.output", mode: 'copy'
+  publishDir "$params.output", mode: 'copy'
 
   input:
   set subjid,file(gbam),file(gidx) from gkbam
@@ -359,7 +355,7 @@ else {
 
 process integrate {
   errorStrategy 'ignore'
-  //publishDir "$params.output", mode: 'copy'
+  publishDir "$params.output", mode: 'copy'
   input:
   set subjid,file(vcfs) from vcflist
     
