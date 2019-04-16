@@ -172,7 +172,14 @@ process seqqc {
 
   script:
   """
+  module load samtools/gcc/1.8
+  bash $baseDir/process_scripts/alignment/bamqc.sh -c $capture_bed -n dna -d 1 -r $index_path -b $sbam -p $pair_id
+  mv ${pair_id}.genomecov.txt ${pair_id}.dedupcov.txt
+  mv ${pair_id}.covhist.txt ${pair_id}.covuniqhist.txt
+  mv ${pair_id}_lowcoverage.txt ${pair_id}_lowcoverageuniq.txt
+  mv ${pair_id}_exoncoverage.txt ${pair_id}_exoncoverageuniq.txt
   bash $baseDir/process_scripts/alignment/bamqc.sh -c $capture_bed -n dna -r $index_path -b $sbam -p $pair_id
+  
   """
 }
 
