@@ -4,13 +4,14 @@ params.input = "$baseDir"
 params.fastqs="$params.input/*.fastq.gz"
 params.design="$params.input/design.txt"
 params.output = "$baseDir/output"
+params.aligner='bwa'
 
 params.genome="/project/shared/bicf_workflow_ref/human/GRCh38"
-params.capture="$params.genome/UTSWV2.bed"
+params.capture="$params.genome/clinseq_prj/hemepanelV3.bed"
 params.pairs="pe"
 params.cancer='skip'
 params.callers = 'all'
-params.markdups='sambamba'
+params.markdups='picard'
 params.callsvs="skip"
 
 
@@ -78,7 +79,7 @@ Channel
 
 process trim {
   errorStrategy 'ignore'
-  publishDir "$params.output", mode: 'copy'
+  publishDir "$params.output/$famid/$pair_id", mode: 'copy'
 
   input:
   set famid,pair_id, file(read1), file(read2) from read
@@ -97,7 +98,7 @@ process trim {
 
 process align {
   errorStrategy 'ignore'
-  publishDir "$params.output/$pair_id", mode: 'copy'
+  publishDir "$params.output/$famid/$pair_id", mode: 'copy'
 
   input:
   set famid,pair_id, file(fq1), file(fq2) from trimread
@@ -109,37 +110,36 @@ process align {
 
   script:
   """
-  bash $baseDir/process_scripts/alignment/dnaseqalign.sh -r $index_path -p $pair_id -x $fq1 -y $fq2
+  bash $baseDir/process_scripts/alignment/dnaseqalign.sh -r $index_path -a $params.aligner -p $pair_id -x $fq1 -y $fq2 $alignopts
   """
  }
 
-process hlacalls {
-  errorStrategy 'ignore'
-  publishDir "$params.output/$pair_id", mode: 'copy'
+// process hlacalls {
+//   errorStrategy 'ignore'
+//   publishDir "$params.output/$pair_id", mode: 'copy'
 
-  input:
-  set famid,pair_id, file(fq1), file(fq2) from genotypefq
+//   input:
+//   set famid,pair_id, file(fq1), file(fq2) from genotypefq
 
-  output:
-  file("*.hisat_hla.*") into genotype
-  when:
-  params.genome =~ /human/ 
-  script:
-  """
-  bash $baseDir/process_scripts/alignment/hisat_genotype.sh -p $pair_id -x $fq1 -y $fq2
-  """
-}
+//   output:
+//   file("*.hisat_hla.*") into genotype
+//   when:
+//   params.genome =~ /human/ 
+//   script:
+//   """
+//   bash $baseDir/process_scripts/alignment/hisat_genotype.sh -p $pair_id -x $fq1 -y $fq2
+//   """
+// }
 
 
 process markdups {
-  //publishDir "$params.output/$pair_id", mode: 'copy'
-
+  publishDir "$params.output/$famid/$pair_id", mode: 'copy'
   input:
   set famid,pair_id, file(sbam) from aligned
 
   output:
-  set pair_id, file("${pair_id}.dedup.bam") into qcbam
-  set famid,pair_id, file("${pair_id}.dedup.bam") into deduped
+  set famid,pair_id, file("${pair_id}.dedup.bam") into qcbam
+  set famid,pair_id, file("${pair_id}.dedup.bam"),file("${pair_id}.dedup.bam.bai") into deduped
 
   script:
   """
@@ -149,10 +149,10 @@ process markdups {
 
 process seqqc {
   errorStrategy 'ignore'
-  publishDir "$params.output/$pair_id", mode: 'copy'
+  publishDir "$params.output/$famid/$pair_id", mode: 'copy'
 
   input:
-  set pair_id, file(sbam) from qcbam
+  set famid,pair_id, file(sbam) from qcbam
 
   output:
   file("${pair_id}.flagstat.txt") into alignstats
@@ -214,7 +214,7 @@ process parse_stat {
 
 process gatkbam {
   errorStrategy 'ignore'
-  publishDir "$params.output/$pair_id", mode: 'copy'
+  publishDir "$params.output/$famid/$pair_id", mode: 'copy'
 
   input:
   set famid,pair_id, file(sbam), file(idx) from deduped
@@ -228,148 +228,117 @@ process gatkbam {
   """
 }
 
+process pindel {
+  errorStrategy 'ignore'
+  publishDir "$params.output/$subjid", mode: 'copy'
+  input:
+  set subjid,file(ssbam),file(ssidx) from svbam
+  output:
+  file("${subjid}.pindel_tandemdup.pass.vcf.gz") into tdvcf
+  file("${subjid}.pindel_indel.pass.vcf.gz") into pindelvcf
+  file("${subjid}.dna.genefusion.txt") into gf
+  script:
+  """
+  source /etc/profile.d/modules.sh
+  bash $baseDir/process_scripts/variants/pindel.sh -r ${index_path} -p ${subjid}
+  perl $baseDir/process_scripts/variants/filter_pindel.pl -d ${subjid}.pindel_tandemdup.vcf.gz -s ${subjid}.pindel_sv.vcf.gz -i ${subjid}.pindel_indel.vcf.gz
+  module load samtools/gcc/1.8 snpeff/4.3q
+  bgzip ${subjid}.pindel_indel.pass.vcf
+  bgzip ${subjid}.pindel_tandemdup.pass.vcf
+  grep '#CHROM' ${subjid}.pindel_sv.pass.vcf > ${subjid}.dna.genefusion.txt
+  cat ${subjid}.pindel_sv.pass.vcf | \$SNPEFF_HOME/scripts/vcfEffOnePerLine.pl |java -jar \$SNPEFF_HOME/SnpSift.jar extractFields - CHROM POS END ANN[*].EFFECT ANN[*].GENE ANN[*].HGVS_C ANN[*].HGVS_P GEN[*] |grep -E 'CHROM|gene_fusion' |uniq >> ${subjid}.dna.genefusion.txt
+  """
+}
+
 gbam
    .groupTuple(by:0)		
-   .into { ssbam; sambam; hsbam; strelkabam; platbam; gkbam }
+   .into { fbbam; strelkabam; platbam; gkbam }
 
- 
-process svcall {
+process freebayes {
   errorStrategy 'ignore'
-  publishDir "$params.output/$pair_id", mode: 'copy'
-  input:
-  set pair_id,file(ssbam),file(ssidx) from svbam
-  output:
-  file("${pair_id}.sv.vcf.gz") into svvcf
-
-  when:
-  params.callsvs != "skip"
-  
-  script:
-  """
-  bash $baseDir/process_scripts/variants/svcalling.sh -a $params.callsvs -b $ssbam -r $index_path -p $pair_id
-  """
-}
-
-process mpileup {
-  errorStrategy 'ignore'
-  publishDir "$baseDir/output", mode: 'copy'
+  publishDir "$params.output/$subjid/individual_callers", mode: 'copy'
 
   input:
-  set subjid,file(gbam),file(gidx) from sambam
-  
+  set subjid,file(gbam),file(gidx) from fbbam
   output:
-  set subjid,file("${subjid}.sam.vcf.gz") into samvcf
-  when:
-  params.callers == 'all' || params.callers == 'mpileup'
+  set subjid,file("${subjid}.fb.vcf.gz") into fbvcf
+  set subjid,file("${subjid}.fb.ori.vcf.gz") into fbori
   script:
   """
-  bash $baseDir/process_scripts/variants/germline_vc.sh -r $index_path -p $subjid -a mpileup
+  bash $baseDir/process_scripts/variants/germline_vc.sh -r $index_path -p $subjid -a freebayes
+  bash $baseDir/process_scripts/variants/norm_annot.sh -r $index_path -p ${subjid}.fb -v ${subjid}.freebayes.vcf.gz
+  mv ${subjid}.freebayes.vcf.gz ${subjid}.fb.ori.vcf.gz
+  mv ${subjid}.fb.norm.vcf.gz ${subjid}.fb.vcf.gz
   """
 }
-process hotspot {
+process gatk {
   errorStrategy 'ignore'
-  publishDir "$baseDir/output", mode: 'copy'
+  publishDir "$params.output/$subjid/individual_callers", mode: 'copy'
 
   input:
-  set subjid,file(gbam),file(gidx) from hsbam
+  set subjid,file(gbam),file(gidx) from gkbam
   output:
-  set subjid,file("${subjid}.hotspot.vcf.gz") into hsvcf
-  when:
-  params.cancer == "detect"
+  set subjid,file("${subjid}.gatk.vcf.gz") into gatkvcf
+  set subjid,file("${subjid}.gatk.ori.vcf.gz") into gatkori
   script:
   """
-  bash $baseDir/process_scripts/variants/germline_vc.sh -r $index_path -p $subjid -a hotspot
+  bash $baseDir/process_scripts/variants/germline_vc.sh -r $index_path -p $subjid -a gatk
+  bash $baseDir/process_scripts/variants/norm_annot.sh -r $index_path -p ${subjid}.gatk -v ${subjid}.gatk.vcf.gz
+  mv ${subjid}.gatk.vcf.gz ${subjid}.gatk.ori.vcf.gz
+  mv ${subjid}.gatk.norm.vcf.gz ${subjid}.gatk.vcf.gz
   """
 }
-process speedseq {
+process strelka {
   errorStrategy 'ignore'
-  publishDir "$baseDir/output", mode: 'copy'
-  input:
-  set subjid,file(gbam),file(gidx) from ssbam
-  output:
-  set subjid,file("${subjid}.ssvar.vcf.gz") into ssvcf
-  when:
-  params.callers == 'all' || params.callers == 'speedseq'
-  script:
-  """
-  bash $baseDir/process_scripts/variants/germline_vc.sh -r $index_path -p $subjid -a speedseq
-  """
-}
-process strelka2 {
-  errorStrategy 'ignore'
-  publishDir "$baseDir/output", mode: 'copy'
+  publishDir "$params.output/$subjid/individual_callers", mode: 'copy'
+
   input:
   set subjid,file(gbam),file(gidx) from strelkabam
   output:
   set subjid,file("${subjid}.strelka2.vcf.gz") into strelkavcf
-  when:
-  params.callers == 'all' || params.callers == 'strelka2'
+  set subjid,file("${subjid}.strelka2.ori.vcf.gz") into strelkaori
   script:
   """
   bash $baseDir/process_scripts/variants/germline_vc.sh -r $index_path -p $subjid -a strelka2
+  bash $baseDir/process_scripts/variants/norm_annot.sh -r $index_path -p ${subjid}.strelka2 -v ${subjid}.strelka2.vcf.gz
+  mv ${subjid}.strelka2.vcf.gz ${subjid}.strelka2.ori.vcf.gz
+  mv ${subjid}.strelka2.norm.vcf.gz ${subjid}.strelka2.vcf.gz
   """
 }
 process platypus {
   errorStrategy 'ignore'
-  publishDir "$params.output", mode: 'copy'
+  publishDir "$params.output/$subjid/individual_callers", mode: 'copy'
 
   input:
   set subjid,file(gbam),file(gidx) from platbam
-
   output:
   set subjid,file("${subjid}.platypus.vcf.gz") into platvcf
-  when:
-  params.callers == 'all' || params.callers == 'platypus'
-  script:
+  set subjid,file("${subjid}.platypus.ori.vcf.gz") into platori
+  script:				       
   """
   bash $baseDir/process_scripts/variants/germline_vc.sh -r $index_path -p $subjid -a platypus
+  bash $baseDir/process_scripts/variants/norm_annot.sh -r $index_path -p ${subjid}.platypus -v ${subjid}.platypus.vcf.gz
+  mv ${subjid}.platypus.vcf.gz ${subjid}.platypus.ori.vcf.gz
+  mv ${subjid}.platypus.norm.vcf.gz ${subjid}.platypus.vcf.gz
   """
 }
-
-process gatk {
-  errorStrategy 'ignore'
-  publishDir "$params.output", mode: 'copy'
-
-  input:
-  set subjid,file(gbam),file(gidx) from gkbam
-
-  output:
-  set subjid,file("${subjid}.platypus.vcf.gz") into gatkvcf
-  when:
-  params.callers == 'gatk'
-  script:
-  """
-  bash $baseDir/process_scripts/variants/germline_vc.sh -r $index_path -p $subjid -a gatk
-  """
-}
-
-if (params.cancer == "detect") {
-   Channel
-	.empty()
-  	.mix(ssvcf,strelkavcf,samvcf,platvcf,hsvcf)
-	.groupTuple(by:0)
-	.into { vcflist}
-}
-else {
-   Channel
-	.empty()
-  	.mix(ssvcf,strelkavcf,samvcf,platvcf)
-	.groupTuple(by:0)
-	.into { vcflist}
-
-}
-
+Channel
+  .empty()
+  .mix(fbvcf,platvcf,gatkvcf,strelkavcf)
+  .groupTuple(by:0)
+  .set { vcflist}
 
 process integrate {
   errorStrategy 'ignore'
-  publishDir "$params.output", mode: 'copy'
+  publishDir "$params.output/$subjid", mode: 'copy'
   input:
-  set subjid,file(vcfs) from vcflist
-    
+  set subjid,file(vcf) from vcflist
   output:
+  file("${subjid}.union.vcf.gz") into unionvcf
   file("${subjid}.annot.vcf.gz") into annotvcf
   script:
   """
+  source /etc/profile.d/modules.sh
   bash $baseDir/process_scripts/variants/union.sh -r $index_path -p $subjid
   bash $baseDir/process_scripts/variants/annotvcf.sh -p $subjid -r $index_path -v ${subjid}.union.vcf.gz
   """
