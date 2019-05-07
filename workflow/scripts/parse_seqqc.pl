@@ -5,8 +5,8 @@ open OUT, ">sequence.stats.txt" or die $!;
 print OUT join("\t",'Sample','total.raw','total.trimmed','ontarget','maprate','propair','Percent.ontarget','Mean.MapQ',
 	       'Percent.QualReads','Median.Mismatch','Indel.Rate','Error.Rate','Percent.Dups','Library.Size',
 	       'Median.Insert','Mean.Insert','Std.insert',
-	       'all.avg.depth','all.median.depth','all.perc.100x','all.perc.200x','all.perc.500x',
-	       'dedup.avg.depth','dedup.median.depth','dedup.perc.100x','dedup.perc.200x','dedup.perc.500x'),"\n";
+	       'all.avg.depth','all.median.depth','all.perc.10x','all.perc.20x','all.perc.50x','all.perc.100x','all.perc.200x',
+	       'dedup.avg.depth','dedup.median.depth','dedup.perc.10x','dedup.perc.20x','dedup.perc.50x','dedup.perc.100x','dedup.perc.200x'),"\n";
 
 my @statfiles = @ARGV;
 
