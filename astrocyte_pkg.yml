@@ -105,24 +105,6 @@ workflow_parameters:
     description: |
       In single-end sequencing, the sequencer reads a fragment from only one end to the other, generating the sequence of base pairs. In paired-end reading it starts at one read, finishes this direction at the specified read length, and then starts another round of reading from the opposite end of the fragment.
 
-  - id: callsvs
-    type: select
-    required: true
-    choices:
-      - [ 'skip', 'Skip SV Calling']
-      - [ 'lumpy', 'Lumpy']
-      - [ 'delly', 'Delly']
-    description: |
-      Run SV calling and Choose the method.
-
-  - id: cancer
-    type: select
-    required: true
-    choices:
-      - [ 'detect', 'Cancer HotSpot Detection']
-      - [ 'skip', 'Skip Cancer Hotspot Detection']
-    description: |
-      Cancer Hotspot Detection implements a process to detect low frequency mutation that have been previously observed in COSMIC
   - id: design
     type: file
     required: true
@@ -138,9 +120,9 @@ workflow_parameters:
   - id: genome
     type: select
     choices:
-      - [ '/project/shared/bicf_workflow_ref/GRCh38', 'Human GRCh38']
-      - [ '/project/shared/bicf_workflow_ref/GRCh37', 'Human GRCh37']
-      - [ '/project/shared/bicf_workflow_ref/GRCm38', 'Mouse GRCh38']
+      - [ '/project/shared/bicf_workflow_ref/human/GRCh38', 'Human GRCh38']
+      - [ '/project/shared/bicf_workflow_ref/human/GRCh37', 'Human GRCh37']
+      - [ '/project/shared/bicf_workflow_ref/mouse/GRCm38', 'Mouse GRCh38']
     required: true
     description: |
       Reference genome for alignment
