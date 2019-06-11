@@ -2,6 +2,7 @@ before_script:
         - module add  python/3.6.1-2-anaconda
         - pip install --user pytest-pythonpath==0.7.1 pytest-cov==2.5.1
         - module load  nextflow/0.31.0
+        - git submodule update --init --recursive
 
 stages:
         - astrocyte
@@ -20,7 +21,6 @@ astrocyte:
 output:
         stage: output
         script:
-        - git submodule update --init --recursive
         - nextflow run workflow/main.nf --design  /project/shared/bicf_workflow_ref/workflow_testdata/germline_variants/design.germline.txt --input /project/shared/bicf_workflow_ref/workflow_testdata/germline_variants/ -resume
         - pytest -m output
         artifacts:
