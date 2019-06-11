@@ -2,6 +2,7 @@ before_script:
         - module add  python/3.6.1-2-anaconda
         - pip install --user pytest-pythonpath==0.7.1 pytest-cov==2.5.1
         - module load  nextflow/0.31.0
+        - git submodule sync --recursive
         - git submodule update --init --recursive
 
 stages:
