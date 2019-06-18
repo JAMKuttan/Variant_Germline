@@ -1,0 +1,28 @@
+before_script:
+        - module add  python/3.6.1-2-anaconda
+        - pip install --user pytest-pythonpath==0.7.1 pytest-cov==2.5.1
+        - module load  nextflow/0.31.0
+        - git submodule sync --recursive
+        - git submodule update --init --recursive
+
+stages:
+        - astrocyte
+        - output
+
+astrocyte:
+        stage: astrocyte
+        script:
+        - module load astrocyte/0.1.0
+        - module unload nextflow
+        - cd ..
+        - astrocyte_cli validate variant_germline
+        artifacts:
+          expire_in: 2 days
+
+output:
+        stage: output
+        script:
+        - nextflow run workflow/main.nf --design  /project/shared/bicf_workflow_ref/workflow_testdata/germline_variants/design.germline.txt --input /project/shared/bicf_workflow_ref/workflow_testdata/germline_variants/ -resume
+        - pytest -m output
+        artifacts:
+          expire_in: 2 days
