@@ -4,7 +4,7 @@ library(tidyverse)
 setwd("../")
 
 # Load Data
-annot_vcf <- read_table("GM12878.annot.vcf.gz")
+annot_vcf <- read_table(Sys.glob("workflow/output/*/*.annot.vcf.gz"))
 annot_vcf = annot_vcf[-grep("^#", annot_vcf$`##fileformat=VCFv4.2`),] %>%
   separate(`##fileformat=VCFv4.2`, into = c("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "GM12878"), sep = "\t")
 
