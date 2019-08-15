@@ -23,7 +23,7 @@ for (i in 1:length(annot_vcf$INFO)) {
   Final$Gene_Variant[i] <- ((gsub(";.*", "", substring(annot_vcf$INFO[i], regexpr("ANN", annot_vcf$INFO[i]) + 4)) %>% strsplit(",") %>% unlist())[1] %>%
                              strsplit("\\|") %>% unlist())[4]
   Final$Amino_Acid_Change[i] <- ((gsub(";.*", "", substring(annot_vcf$INFO[i], regexpr("ANN", annot_vcf$INFO[i]) + 4)) %>% strsplit(",") %>% unlist())[1] %>%
-                             strsplit("\\|") %>% unlist())[11]
+                                  strsplit("\\|") %>% unlist())[11]
   Final$Exon_Number[i] <- (((gsub(";.*", "", substring(annot_vcf$INFO[i], regexpr("ANN", annot_vcf$INFO[i]) + 4)) %>% strsplit(",") %>% unlist())[1] %>%
                             strsplit("\\|") %>% unlist())[9] %>% strsplit("/") %>% unlist())[1]
   Final$Effects[i] <- ((gsub(";.*", "", substring(annot_vcf$INFO[i], regexpr("ANN", annot_vcf$INFO[i]) + 4)) %>% strsplit(",") %>% unlist())[1] %>%
