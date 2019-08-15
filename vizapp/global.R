@@ -9,9 +9,9 @@ annot_vcf <- annot_vcf[-grep("^#", annot_vcf$`##fileformat=VCFv4.2`),] %>%
   separate(`##fileformat=VCFv4.2`, into = c("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "GM12878"), sep = "\t")
 
 #Initialize Table
-Final <- data.frame(matrix(ncol = 11, nrow = nrow(annot_vcf)))
-colnames(Final) <- c("Chromosome", "Position", "Gene_Variant", "Exon_Number", "Effects", "ID", "Reference_Allele", "Alternate_Allele", "Total_Depth",
-                     "Alt_Percent", "Allele_Frequency(PopMax)")
+Final <- data.frame(matrix(ncol = 12, nrow = nrow(annot_vcf)))
+colnames(Final) <- c("Chromosome", "Position", "Gene_Variant", "Amino_Acid_Change", "Exon_Number", "Effects", "Reference_Allele", "Alternate_Allele", "Total_Depth",
+                     "Alt_Percent", "Allele_Frequency(PopMax)", "ID")
 
 #Add Table Data
 Final$Chromosome <- annot_vcf$CHROM
@@ -22,6 +22,8 @@ Final$Alternate_Allele <- annot_vcf$ALT
 for (i in 1:length(annot_vcf$INFO)) {
   Final$Gene_Variant[i] <- ((gsub(";.*", "", substring(annot_vcf$INFO[i], regexpr("ANN", annot_vcf$INFO[i]) + 4)) %>% strsplit(",") %>% unlist())[1] %>%
                              strsplit("\\|") %>% unlist())[4]
+  Final$Amino_Acid_Change[i] <- ((gsub(";.*", "", substring(annot_vcf$INFO[i], regexpr("ANN", annot_vcf$INFO[i]) + 4)) %>% strsplit(",") %>% unlist())[1] %>%
+                             strsplit("\\|") %>% unlist())[11]
   Final$Exon_Number[i] <- (((gsub(";.*", "", substring(annot_vcf$INFO[i], regexpr("ANN", annot_vcf$INFO[i]) + 4)) %>% strsplit(",") %>% unlist())[1] %>%
                             strsplit("\\|") %>% unlist())[9] %>% strsplit("/") %>% unlist())[1]
   Final$Effects[i] <- ((gsub(";.*", "", substring(annot_vcf$INFO[i], regexpr("ANN", annot_vcf$INFO[i]) + 4)) %>% strsplit(",") %>% unlist())[1] %>%
